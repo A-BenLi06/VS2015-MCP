@@ -1,0 +1,4 @@
+interface:
+  display_name: "Win8.1/WP8.1 Metro Dev"
+  short_description: "Build dual-target legacy Metro apps."
+  default_prompt: "Use $windows81-metro-dev to design or implement a Windows 8.1 or Windows Phone 8.1 Metro app."
