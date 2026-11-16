@@ -4,9 +4,15 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { definitions, asToolResult } from './tools.mjs';
 import { stopChildren } from './bridge.mjs';
 import { phoneDefinitions } from './phone.mjs';
+import { readFile } from 'node:fs/promises';
 
 serveStdio(() => {
   const server = new McpServer({ name: 'visual-studio-2015', version: '0.1.0' });
+  for (const name of ['cli-guide', 'phone-guide']) {
+    server.registerResource(name, `vs2015://${name}`, { mimeType: 'text/markdown' }, async uri => ({
+      contents: [{ uri: uri.href, mimeType: 'text/markdown', text: await readFile(new URL(`../docs/${name}.md`, import.meta.url), 'utf8') }],
+    }));
+  }
   for (const tool of [...definitions, ...phoneDefinitions]) {
     server.registerTool(tool.name, {
       description: tool.description, inputSchema: tool.schema,
