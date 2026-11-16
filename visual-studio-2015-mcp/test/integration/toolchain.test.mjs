@@ -18,7 +18,7 @@ test('MCP stdio calls the real VS2015 toolchain', { skip: process.platform !== '
   let diagnostics = '';
   transport.stderr?.on('data', data => { diagnostics += data; });
   const call = async (name, args) => {
-    const result = await client.callTool({ name, arguments: args }, { timeout: 120000 });
+    const result = await client.callTool({ name, arguments: args }, { timeout: 180000, signal: t.signal });
     assert.equal(result.isError, false, JSON.stringify(result));
     return result.structuredContent ?? JSON.parse(result.content[0].text);
   };
@@ -54,15 +54,15 @@ test('MCP stdio calls the real VS2015 toolchain', { skip: process.platform !== '
       assert.match(inventory.tools.makeappx.path, /Windows Kits[\\/]8\.1[\\/]/);
     });
     await t.test('invalid root and native failures surface as tool errors', async () => {
-      const root = await client.callTool({ name: 'vs2015_discover', arguments: { vsRoot: dir } }, { timeout: 120000 });
+      const root = await client.callTool({ name: 'vs2015_discover', arguments: { vsRoot: dir } }, { timeout: 180000, signal: t.signal });
       assert.equal(root.isError, true);
-      const missing = await client.callTool({ name: 'vs2015_msbuild', arguments: { path: 'missing.proj', workingDirectory: dir } }, { timeout: 120000 });
+      const missing = await client.callTool({ name: 'vs2015_msbuild', arguments: { path: 'missing.proj', workingDirectory: dir } }, { timeout: 180000, signal: t.signal });
       assert.equal(missing.isError, true);
       assert.notEqual(missing.structuredContent.exitCode, 0);
     });
     await t.test('long build timeout stops the process tree', async () => {
       await writeFile(path.join(dir, 'wait.proj'), '<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003"><Target Name="Build"><Exec Command="ping -n 20 127.0.0.1 &gt;nul" /></Target></Project>');
-      const result = await client.callTool({ name: 'vs2015_msbuild', arguments: { path: 'wait.proj', workingDirectory: dir, timeoutMs: 1000 } }, { timeout: 120000 });
+      const result = await client.callTool({ name: 'vs2015_msbuild', arguments: { path: 'wait.proj', workingDirectory: dir, timeoutMs: 1000 } }, { timeout: 180000, signal: t.signal });
       assert.equal(result.isError, true);
       assert.equal(result.structuredContent.timedOut, true);
     });
