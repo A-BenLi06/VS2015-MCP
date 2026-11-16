@@ -99,7 +99,7 @@ export const definitions = [
     name: 'vs2015_msbuild',
     description: 'Build/rebuild/clean or preprocess with MSBuild 14. Properties are an open dictionary. Projects can execute arbitrary build tasks.',
     schema: z.object({ ...common, path: text, targets: z.array(text.regex(/^[^;,:]+$/)).optional(),
-      properties: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]*$/), argument).optional(),
+      properties: z.record(z.string().regex(/^[\p{L}_][\p{L}\p{N}\p{M}_.-]*$/u), argument).optional(),
       hostArchitecture: z.enum(['x86', 'x64']).default('x86'), maxCpuCount: z.number().int().min(1).max(256).optional(),
       verbosity: z.enum(['quiet', 'minimal', 'normal', 'detailed', 'diagnostic']).optional(),
       preprocess: text.optional(), additionalArguments: argv.optional() }),

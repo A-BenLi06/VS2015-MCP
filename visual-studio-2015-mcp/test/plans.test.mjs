@@ -8,10 +8,11 @@ import { inspectSolution } from '../src/solution.mjs';
 
 test('MSBuild keeps property separators literal and accepts custom configuration names', () => {
   const parsed = definitions.find(t => t.name === 'vs2015_msbuild').schema.parse({ path: 'a b.csproj',
-    properties: { Configuration: '发布 Candidate', DefineConstants: 'A;B', Custom: '%$@();,?*' } });
+    properties: { Configuration: '发布 Candidate', DefineConstants: 'A;B', Custom: '%$@();,?*', 自定义属性: '值' } });
   const plan = planMsbuild(parsed);
   assert.ok(plan.arguments.includes('/p:DefineConstants=A%3BB'));
   assert.ok(plan.arguments.includes('/p:Configuration=发布 Candidate'));
+  assert.ok(plan.arguments.includes('/p:自定义属性=值'));
   assert.ok(plan.arguments.includes('/p:Custom=%25%24%40%28%29%3B%2C%3F%2A'));
   assert.ok(plan.arguments.includes('/nr:false'));
   assert.equal(plan.tool, 'msbuild');
