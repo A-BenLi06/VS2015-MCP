@@ -10,6 +10,8 @@ const toolNames = ['devenv', 'msbuild', 'msbuild64', 'vstest', 'mstest', 'cl', '
 const common = {
   vsRoot: text.optional().describe('Explicit VS2015 installation root; invalid paths fail without falling back.'),
   architecture: z.enum(['x86', 'amd64', 'x86_amd64', 'x86_arm', 'amd64_x86', 'amd64_arm']).default('x86'),
+  sdkVersion: z.string().regex(/^(8\.1|10\.\d+\.\d+\.\d+)$/).optional().describe('SDK selection supported by the installed vcvarsall.bat.'),
+  store: z.boolean().default(false).describe('Pass the VS2015 vcvarsall store environment option.'),
   workingDirectory: text.optional(),
   timeoutMs: z.number().int().min(100).max(3600000).default(120000),
   maxOutputChars: z.number().int().min(256).max(1048576).default(64000),
@@ -18,55 +20,58 @@ const common = {
 };
 
 export function escapeMsbuild(value) {
-  return value.replace(/[%$@();?'*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return value.replace(/[%$@();,?'*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
+const resolveInput = (input, value) => path.resolve(input.workingDirectory ?? process.cwd(), value);
+
 function base(input, tool, args) {
-  const { vsRoot, architecture, workingDirectory, timeoutMs, maxOutputChars, encoding, dryRun } = input;
+  const { vsRoot, architecture, sdkVersion, store, workingDirectory, timeoutMs, maxOutputChars, encoding, dryRun } = input;
   return { operation: 'run', tool, arguments: args, vsRoot: vsRoot ?? process.env.VS2015_MCP_ROOT,
-    architecture, workingDirectory, timeoutMs, maxOutputChars, encoding, dryRun };
+    architecture, sdkVersion, store, workingDirectory: workingDirectory ? path.resolve(workingDirectory) : undefined,
+    timeoutMs, maxOutputChars, encoding, dryRun };
 }
 
 export function planMsbuild(input) {
-  const args = [path.resolve(input.path), '/nologo', '/nr:false'];
+  const args = [resolveInput(input, input.path), '/nologo', '/nr:false'];
   if (input.targets?.length) args.push(`/t:${input.targets.join(';')}`);
   for (const [name, value] of Object.entries(input.properties ?? {})) args.push(`/p:${name}=${escapeMsbuild(value)}`);
   if (input.maxCpuCount) args.push(`/m:${input.maxCpuCount}`);
   if (input.verbosity) args.push(`/v:${input.verbosity}`);
-  if (input.preprocess) args.push(`/pp:${path.resolve(input.preprocess)}`);
+  if (input.preprocess) args.push(`/pp:${resolveInput(input, input.preprocess)}`);
   args.push(...(input.additionalArguments ?? []));
   return base(input, input.hostArchitecture === 'x64' ? 'msbuild64' : 'msbuild', args);
 }
 
 export function planDevenv(input) {
   if (input.projectConfiguration && !input.project) throw new Error('projectConfiguration requires project.');
-  const args = [path.resolve(input.solution), `/${input.action}`, input.configuration];
+  const args = [resolveInput(input, input.solution), `/${input.action}`, input.configuration];
   if (input.project) args.push('/Project', input.project);
   if (input.projectConfiguration) args.push('/ProjectConfig', input.projectConfiguration);
-  if (input.logFile) args.push('/Out', path.resolve(input.logFile));
+  if (input.logFile) args.push('/Out', resolveInput(input, input.logFile));
   return base(input, 'devenv', args);
 }
 
 export function planVstest(input) {
   if (input.tests?.length && input.filter) throw new Error('tests and filter cannot be combined.');
-  const args = input.containers.map(file => path.resolve(file));
+  const args = input.containers.map(file => resolveInput(input, file));
   if (input.listTests) args.push('/ListTests');
-  if (input.settings) args.push(`/Settings:${path.resolve(input.settings)}`);
+  if (input.settings) args.push(`/Settings:${resolveInput(input, input.settings)}`);
   if (input.tests?.length) args.push(`/Tests:${input.tests.join(',')}`);
   if (input.filter) args.push(`/TestCaseFilter:${input.filter}`);
   if (input.platform) args.push(`/Platform:${input.platform}`);
   if (input.framework) args.push(`/Framework:${input.framework}`);
-  if (input.adapterPath) args.push(`/TestAdapterPath:${path.resolve(input.adapterPath)}`);
+  if (input.adapterPath) args.push(`/TestAdapterPath:${resolveInput(input, input.adapterPath)}`);
   if (input.trx) args.push('/Logger:trx');
   args.push(...(input.additionalArguments ?? []));
   return base(input, 'vstest', args);
 }
 
 export function planMstest(input) {
-  const args = input.containers.map(file => `/testcontainer:${path.resolve(file)}`);
-  if (input.settings) args.push(`/testsettings:${path.resolve(input.settings)}`);
+  const args = input.containers.map(file => `/testcontainer:${resolveInput(input, file)}`);
+  if (input.settings) args.push(`/testsettings:${resolveInput(input, input.settings)}`);
   for (const test of input.tests ?? []) args.push(`/test:${test}`);
-  if (input.resultsFile) args.push(`/resultsfile:${path.resolve(input.resultsFile)}`);
+  if (input.resultsFile) args.push(`/resultsfile:${resolveInput(input, input.resultsFile)}`);
   args.push(...(input.additionalArguments ?? []));
   return base(input, 'mstest', args);
 }
@@ -75,7 +80,7 @@ export const definitions = [
   {
     name: 'vs2015_discover', readOnly: true,
     description: 'Find VS2015, MSBuild 14, test runners, VC and SDK executables; report missing components and versions.',
-    schema: z.object({ vsRoot: text.optional(), architecture: common.architecture }),
+    schema: z.object({ vsRoot: text.optional(), architecture: common.architecture, sdkVersion: common.sdkVersion, store: common.store }),
     run: (input, ctx) => invokeBackend({ ...input, vsRoot: input.vsRoot ?? process.env.VS2015_MCP_ROOT, operation: 'discover' }, ctx),
   },
   {

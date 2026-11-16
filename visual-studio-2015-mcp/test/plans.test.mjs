@@ -8,13 +8,23 @@ import { inspectSolution } from '../src/solution.mjs';
 
 test('MSBuild keeps property separators literal and accepts custom configuration names', () => {
   const parsed = definitions.find(t => t.name === 'vs2015_msbuild').schema.parse({ path: 'a b.csproj',
-    properties: { Configuration: '发布 Candidate', DefineConstants: 'A;B', Custom: '%$@();?*' } });
+    properties: { Configuration: '发布 Candidate', DefineConstants: 'A;B', Custom: '%$@();,?*' } });
   const plan = planMsbuild(parsed);
   assert.ok(plan.arguments.includes('/p:DefineConstants=A%3BB'));
   assert.ok(plan.arguments.includes('/p:Configuration=发布 Candidate'));
-  assert.ok(plan.arguments.includes('/p:Custom=%25%24%40%28%29%3B%3F%2A'));
+  assert.ok(plan.arguments.includes('/p:Custom=%25%24%40%28%29%3B%2C%3F%2A'));
   assert.ok(plan.arguments.includes('/nr:false'));
   assert.equal(plan.tool, 'msbuild');
+});
+
+test('typed paths resolve against the requested working directory', () => {
+  const workingDirectory = path.resolve('separate work');
+  const plan = planMsbuild({ workingDirectory, path: 'app.csproj', preprocess: 'imports.xml' });
+  assert.equal(plan.arguments[0], path.join(workingDirectory, 'app.csproj'));
+  assert.ok(plan.arguments.includes(`/pp:${path.join(workingDirectory, 'imports.xml')}`));
+  const testPlan = planVstest({ workingDirectory, containers: ['tests.dll'], settings: 'test.runsettings' });
+  assert.equal(testPlan.arguments[0], path.join(workingDirectory, 'tests.dll'));
+  assert.ok(testPlan.arguments.includes(`/Settings:${path.join(workingDirectory, 'test.runsettings')}`));
 });
 
 test('devenv and vstest reject contradictory arguments', () => {
