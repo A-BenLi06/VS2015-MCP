@@ -18,12 +18,15 @@ export function stopChildren() {
   for (const child of active) terminate(child);
 }
 
-export function invokeBackend(request, { signal, script = 'Invoke-Vs2015.ps1' } = {}) {
+export function invokeBackend(request, { signal, script = 'Invoke-Vs2015.ps1', desktopX86 = false } = {}) {
   if (process.platform !== 'win32') throw new Error('This server requires Windows and PowerShell 7.');
   signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const child = spawn(process.env.VS2015_MCP_PWSH || 'pwsh.exe',
-      ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path.join(scripts, script)],
+    const executable = desktopX86
+      ? path.join(process.env.SystemRoot || 'C:\\Windows', 'SysWOW64', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      : process.env.VS2015_MCP_PWSH || 'pwsh.exe';
+    const child = spawn(executable,
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(scripts, script)],
       { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     active.add(child);
     let stdout = '', stderr = '', failure;
@@ -54,7 +57,7 @@ export function invokeBackend(request, { signal, script = 'Invoke-Vs2015.ps1' } 
         if (code !== 0) return reject(new Error(`PowerShell exited ${code}: ${stderr}`));
         resolve(result);
       } catch (error) {
-        reject(new Error(`Invalid backend response: ${error.message}. ${stderr}`));
+        reject(new Error(`Invalid backend response (PowerShell exit ${code}): ${error.message}. ${stderr}`));
       }
     });
     child.stdin.end(JSON.stringify(request));
