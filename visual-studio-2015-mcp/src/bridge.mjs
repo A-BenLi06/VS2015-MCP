@@ -30,7 +30,7 @@ export function invokeBackend(request, { signal, script = 'Invoke-Vs2015.ps1' } 
     const fail = error => { failure ??= error; terminate(child); };
     const abort = () => fail(new Error('Request cancelled; stopping the tool process tree.'));
     const timer = setTimeout(() => fail(new Error('PowerShell bridge exceeded its deadline.')),
-      (request.timeoutMs ?? 120000) + 90000);
+      (request.timeoutMs ?? 120000) + (request.setupTimeoutMs ?? 60000) + 30000);
     signal?.addEventListener('abort', abort, { once: true });
     // JSON escaping can expand each retained native character to six bytes.
     const limit = Math.max(2097152, (request.maxOutputChars ?? 64000) * 14);

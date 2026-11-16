@@ -14,6 +14,7 @@ const common = {
   store: z.boolean().default(false).describe('Pass the VS2015 vcvarsall store environment option.'),
   workingDirectory: text.optional(),
   timeoutMs: z.number().int().min(100).max(3600000).default(120000),
+  setupTimeoutMs: z.number().int().min(1000).max(300000).default(60000).describe('Separate deadline for initializing the legacy developer environment.'),
   maxOutputChars: z.number().int().min(256).max(1048576).default(64000),
   encoding: text.optional().describe('Native output code page/name override; does not change tool UI language.'),
   dryRun: z.boolean().default(false).describe('Resolve tools/environment and return argv without executing the tool.'),
@@ -26,10 +27,10 @@ export function escapeMsbuild(value) {
 const resolveInput = (input, value) => path.resolve(input.workingDirectory ?? process.cwd(), value);
 
 function base(input, tool, args) {
-  const { vsRoot, architecture, sdkVersion, store, workingDirectory, timeoutMs, maxOutputChars, encoding, dryRun } = input;
+  const { vsRoot, architecture, sdkVersion, store, workingDirectory, timeoutMs, setupTimeoutMs, maxOutputChars, encoding, dryRun } = input;
   return { operation: 'run', tool, arguments: args, vsRoot: vsRoot ?? process.env.VS2015_MCP_ROOT,
     architecture, sdkVersion, store, workingDirectory: workingDirectory ? path.resolve(workingDirectory) : undefined,
-    timeoutMs, maxOutputChars, encoding, dryRun };
+    timeoutMs, setupTimeoutMs, maxOutputChars, encoding, dryRun };
 }
 
 export function planMsbuild(input) {
@@ -80,7 +81,7 @@ export const definitions = [
   {
     name: 'vs2015_discover', readOnly: true,
     description: 'Find VS2015, MSBuild 14, test runners, VC and SDK executables; report missing components and versions.',
-    schema: z.object({ vsRoot: text.optional(), architecture: common.architecture, sdkVersion: common.sdkVersion, store: common.store }),
+    schema: z.object({ vsRoot: text.optional(), architecture: common.architecture, sdkVersion: common.sdkVersion, store: common.store, setupTimeoutMs: common.setupTimeoutMs }),
     run: (input, ctx) => invokeBackend({ ...input, vsRoot: input.vsRoot ?? process.env.VS2015_MCP_ROOT, operation: 'discover' }, ctx),
   },
   {
