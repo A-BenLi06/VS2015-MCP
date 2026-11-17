@@ -159,3 +159,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T20:40:44+08:00 — IDE租约与取消的实机回归
 扩展IDE端到端测试：两个独立MCP客户端连接同一自有IDE时第二个收到SESSION_BUSY，首个detach后第二个可接管；取消等待断点只结束等待，IDE仍保持design且后续工作流可用。同时检查活动平台。完整MCP编辑/重建/断点/单步回归通过。
 
+
+## 2026-11-17T20:41:21+08:00 — 环境独立 CI
+新增GitHub Actions单元测试矩阵（Windows/Linux、Node22/24），锁定官方checkout/setup-node提交，工作流仅read权限。实机VS2015/Hyper-V测试继续本机显式运行，不在托管runner冒充通过。验证：本机npm test共32项通过；工作流已按官方动作参数配置，推送后检查实际运行。
+
