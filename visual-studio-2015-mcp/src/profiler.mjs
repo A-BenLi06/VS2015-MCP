@@ -28,14 +28,18 @@ async function execute(operation, input, ctx) {
   let result;
   try { result = await invokeBackend(request, bridge); }
   catch (error) { result = { ...(error.backendResult ?? {}), error: { code: 'PROFILER_INTERRUPTED', message: error.message } }; }
-  const artifact = await saveArtifact(history.id, capture ? 'profiler-capture' : 'profiler-report', { operation, result });
-  // Nested native results must retain MCP failure semantics.
-  if (result.execution) Object.assign(result, { exitCode: result.execution.exitCode, timedOut: result.execution.timedOut });
-  if (capture && result.status && result.status !== 'completed' && !result.error) {
-    result.error = { code: 'PROFILE_INCOMPLETE', message: `Capture status: ${result.status}; inspect cleanup state and trace quality before analysis.` };
-  }
+  const artifact = await saveProfilerResult(history.id, operation, result);
   const { path: artifactPath, ...reference } = artifact;
   return { ...result, ...(capture ? { captureId: result.runId ?? result.capture?.runId } : {}), ...reference, artifactPath };
+}
+
+export async function saveProfilerResult(runId, operation, result) {
+  // Nested native results must retain MCP failure semantics.
+  if (result.execution) Object.assign(result, { exitCode: result.execution.exitCode, timedOut: result.execution.timedOut });
+  if (operation === 'capture' && result.status && result.status !== 'completed' && !result.error) {
+    result.error = { code: 'PROFILE_INCOMPLETE', message: `Capture status: ${result.status}; inspect cleanup state and trace quality before analysis.` };
+  }
+  return saveArtifact(runId, operation === 'capture' ? 'profiler-capture' : 'profiler-report', { operation, result });
 }
 export const profilerDefinitions = [
   { name: 'vs2015_profiler_discover', readOnly: true, description: 'Find installed VS2015 Performance Tools and optional PerfView, report versions and elevation. Discovery does not start a profiler.',

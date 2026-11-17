@@ -147,3 +147,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T20:28:04+08:00 — 修复审查 A：嵌套比较丢字段
 确认JSON.stringify属性白名单会遗漏嵌套context/settings，改为共享递归规范化，保留数组顺序，并让热点与进程比较使用同一逻辑。新增ARM/x86嵌套差异、数组顺序、空值及属性重排回归。验证11项历史/进程比较测试通过。
 
+
+## 2026-11-17T20:28:46+08:00 — 修复审查 B：历史结果状态一致
+在性能结果落盘前完成退出码/超时提升及不完整采集错误归类，确保即时响应和历史工件是同一最终状态。真实文件工件回归覆盖partial、native失败/超时和已有取消错误，测试通过。
+
