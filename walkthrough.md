@@ -84,3 +84,7 @@
 - 热点必须声明total/rate/ratio/gauge语义；只对累计量做曝光归一化。历史JSON原子发布，CLR使用自身采样时间，缺字段/坏时间/坏JSON不再标完整。
 - 完整和中断采样均可落为artifact，原始证据快照带SHA256并在重新读取时核验。
 - 验证：7项数据/并发/口径/MCP历史回归全部通过。
+
+## 2026-11-17T16:55:00+08:00 — CLI debugging integration
+Added debugger inventory, CDB dump/non-suspending live snapshot/initial-loader snapshot tools and an explicit VS2015 IDE handoff. Raw transcripts and failures are recorded as history artifacts. Fixed command sets isolate startup scripts and distinguish target lifecycle; no persistent stepping is claimed. Validation: real Windows inventory, dry-run argv/lifecycle and missing-CDB integration test passed (1 test). Actual CDB execution remains unverified because it is not installed.
+
