@@ -18,8 +18,10 @@ test('real debugger inventory, safe plans and missing CDB result', { skip: proce
     assert.equal(snapshot.commands.at(-1), 'qd'); assert.ok(snapshot.commands.includes('.loadby sos clr'));
     const dumpPath = path.join(directory, 'placeholder.dmp');
     await writeFile(dumpPath, 'dry-run placeholder; never opened by CDB');
-    const dump = await call('vs2015_debug_dump', { dumpPath, architecture: 'x64', dryRun: true });
+    const dump = await call('vs2015_debug_dump', { dumpPath, architecture: 'x64', managedRuntime: 'clr', heapSummary: true, dryRun: true });
     assert.ok(dump.commands.includes('.ecxr')); assert.equal(dump.commands.at(-1), 'q');
+    assert.ok(dump.commands.includes('!dumpheap -stat')); assert.ok(dump.commands.includes('!eeheap -gc'));
+    await assert.rejects(call('vs2015_debug_dump', { dumpPath, architecture: 'x64', heapSummary: true, dryRun: true }), /explicit managedRuntime/);
     const launch = await call('vs2015_debug_launch_snapshot', { executable: process.execPath, arguments: ['--version', 'a & b'], architecture: 'x64', dryRun: true });
     assert.deepEqual(launch.arguments.slice(-3), [process.execPath, '--version', 'a & b']);
     assert.equal(launch.commands.at(-1), 'q');

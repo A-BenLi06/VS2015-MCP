@@ -104,3 +104,7 @@ Added Performance Tools discovery/help/status, bounded VSPerf CPU attach/detach 
 ## 2026-11-17T17:10:21+08:00 — Compare CPU memory and GC by operation
 Added profile_compare with source verification and operation/context/collector/settings/action matching. CPU and CLR use independent observed time windows; memory peaks stay absolute. CLR intervals crossing only the CPU window boundary are now included correctly, while missing/reset CLR coverage is explicit. Non-total hotspot duplicate keys are rejected instead of summing ratios/rates/gauges. Validation: 14 tests passed including real MCP process sampling/comparison, missing-CLR rejection, snapshot tampering, window boundaries and normalization regressions.
 
+
+## 2026-11-17T17:12:16+08:00 — Managed heap type statistics from dumps
+Added optional offline Framework SOS heapSummary to CDB dump analysis using !eeheap -gc and !dumpheap -stat, with explicit runtime validation. It reports heap/type statistics in the raw transcript and does not claim allocation history or retained-size analysis. Validation: debugger integration dry-run commands and invalid runtime rejection passed; real dump analysis still requires CDB and a suitable full-memory dump.
+

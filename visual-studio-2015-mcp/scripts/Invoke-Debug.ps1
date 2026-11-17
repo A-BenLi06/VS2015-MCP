@@ -155,6 +155,9 @@ function Invoke-DebugRequest($Request) {
     if ($architecture -notin @('x86', 'x64')) { throw 'architecture must be x86 or x64.' }
     $runtime = Get-Value $Request 'managedRuntime' 'none'
     if ($runtime -notin @('none', 'clr', 'mscorwks')) { throw 'managedRuntime must be none, clr (.NET Framework 4) or mscorwks (.NET Framework 2/3.5).' }
+    $heapSummary = Get-Value $Request 'heapSummary' $false
+    if ($heapSummary -isnot [bool]) { throw 'heapSummary must be a boolean.' }
+    if ($heapSummary -and ($operation -ne 'dump' -or $runtime -eq 'none')) { throw 'heapSummary requires an offline dump and an explicit managedRuntime.' }
     $candidate = @($inventory.tools | Where-Object { $_.name -eq 'cdb' -and $_.architecture -eq $architecture } |
         Sort-Object -Property @{ Expression = { [version](($_.version -split ' ')[0]) }; Descending = $true } | Select-Object -First 1)
     $cdbPath = if ($candidate.Count) { $candidate[0].path } else { $null }
@@ -189,6 +192,9 @@ function Invoke-DebugRequest($Request) {
     }
     if ($runtime -ne 'none') {
         foreach ($command in @(".loadby sos $runtime", '!threads', '~*e !clrstack', '!pe')) { $commands.Add($command) }
+    }
+    if ($heapSummary) {
+        foreach ($command in @('!eeheap -gc', '!dumpheap -stat')) { $commands.Add($command) }
     }
     $commands.Add(".echo $marker")
     $commands.Add($(if ($operation -eq 'snapshot') { 'qd' } else { 'q' }))
