@@ -112,3 +112,7 @@ Added optional offline Framework SOS heapSummary to CDB dump analysis using !eeh
 ## 2026-11-17T17:12:49+08:00 — Discover profile targets through MCP
 Added host process inventory with optional name filtering, PID/start-time identity and explicit inaccessible details. This completes target selection through MCP without relying on an external shell and distinguishes host PIDs from mobile guest apps. Validation: actual process discovery plus MCP sampling/history comparison integration passed.
 
+
+## 2026-11-17T17:16:24+08:00 — v0.2 documentation and final validation
+Published Chinese diagnostics/performance and debugging guides with Microsoft documentation, fixed-version PerfView sources, local VSPX implementation evidence, workflows, measurement semantics and explicit validation limits. Updated README and package/server version to 0.2.0, exposing four MCP guide resources. Final checks: 24 unit tests passed; 15 integration tests passed and 1 opt-in live-emulator screenshot test skipped; prior real cancellation/EOF checks both passed with no remaining owned processes. Release MCP handshake reported version 0.2.0, 45 tools and 4 readable resources. No CDB/PerfView installation or elevation was attempted; real debugger and elevated profiler execution remain environmental validation gaps.
+

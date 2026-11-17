@@ -11,8 +11,8 @@ import { debugDefinitions } from './debug.mjs';
 import { profilerDefinitions } from './profiler.mjs';
 
 serveStdio(() => {
-  const server = new McpServer({ name: 'visual-studio-2015', version: '0.1.0' });
-  for (const name of ['cli-guide', 'phone-guide']) {
+  const server = new McpServer({ name: 'visual-studio-2015', version: '0.2.0' });
+  for (const name of ['cli-guide', 'phone-guide', 'diagnostics-performance', 'debug-guide']) {
     server.registerResource(name, `vs2015://${name}`, { mimeType: 'text/markdown' }, async uri => ({
       contents: [{ uri: uri.href, mimeType: 'text/markdown', text: await readFile(new URL(`../docs/${name}.md`, import.meta.url), 'utf8') }],
     }));
