@@ -116,3 +116,7 @@ Added host process inventory with optional name filtering, PID/start-time identi
 ## 2026-11-17T17:16:24+08:00 — v0.2 documentation and final validation
 Published Chinese diagnostics/performance and debugging guides with Microsoft documentation, fixed-version PerfView sources, local VSPX implementation evidence, workflows, measurement semantics and explicit validation limits. Updated README and package/server version to 0.2.0, exposing four MCP guide resources. Final checks: 24 unit tests passed; 15 integration tests passed and 1 opt-in live-emulator screenshot test skipped; prior real cancellation/EOF checks both passed with no remaining owned processes. Release MCP handshake reported version 0.2.0, 45 tools and 4 readable resources. No CDB/PerfView installation or elevation was attempted; real debugger and elevated profiler execution remain environmental validation gaps.
 
+
+## 2026-11-17T18:16:33+08:00 — 本机优先与可复现 PerfView 准备
+用户确认本机进程和 WP8.1/Win10M 都需要，先推进本机实际验证。新增显式版本的官方 PerfView 获取脚本：校验 GitHub release SHA-256、文件大小与 Microsoft Authenticode，仅发布到独立用户目录，不修改 PATH/注册表/客户端。实测取得 4.0.0，hash=270e2ba419b0b2d93c4b15b0851f257edf655c92fe0ad95add3d0b5f6d6aad48，签名 Valid；供后续离线报告验证。
+
