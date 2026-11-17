@@ -21,10 +21,11 @@ test('persistent MCP IDE session builds, edits, hits a breakpoint and reads vari
   assert.equal(path.resolve(owned.source).toLowerCase(), source.toLowerCase());
   assert.equal(owned.breakpointLine, 9); assert.equal(owned.expectedInput, 21); assert.equal(owned.expectedDoubled, 42);
   const client = new Client({ name: 'ide-runtime-test', version: '1' });
+  const contender = new Client({ name: 'ide-runtime-contender', version: '1' });
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../../src/server.mjs', import.meta.url))], env: { ...process.env } }));
   const raw = (name, args) => client.callTool({ name, arguments: args }, { timeout: 90000, signal: t.signal });
   const call = async (name, args) => { const value = await raw(name, args); assert.equal(value.isError, false, JSON.stringify(value)); return value.structuredContent; };
-  let sessionId, original, edited, newBreakpointIds = [];
+  let sessionId, contenderSessionId, original, edited, newBreakpointIds = [];
   const scoped = (name, args = {}) => call(name, { sessionId, timeoutMs: 60000, ...args });
   const eventually = async (check, timeoutMs = 60000) => {
     const deadline = Date.now() + timeoutMs;
@@ -36,9 +37,20 @@ test('persistent MCP IDE session builds, edits, hits a breakpoint and reads vari
     const rejected = await raw('vs2015_attach', { processId, expectedStartTimeUtc: '2000-01-01T00:00:00.000Z' });
     assert.equal(rejected.isError, true); assert.equal(rejected.structuredContent.error.code, 'TARGET_CHANGED');
     const attached = await call('vs2015_attach', { processId, expectedStartTimeUtc }); sessionId = attached.sessionId;
+    await contender.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../../src/server.mjs', import.meta.url))], env: { ...process.env } }));
+    const leaseConflict = await contender.callTool({ name: 'vs2015_attach', arguments: { processId, expectedStartTimeUtc } }, { timeout: 90000 });
+    assert.equal(leaseConflict.isError, true);
+    assert.equal(leaseConflict.structuredContent.error.code, 'SESSION_BUSY');
     const status = await scoped('vs2015_solution_status');
     assert.equal(path.resolve(status.fullName).toLowerCase(), solution.toLowerCase());
     assert.equal(status.activeConfiguration, 'Debug'); assert.equal(status.debugger.mode, 'design');
+    assert.equal(status.activePlatform, 'Any CPU');
+    const waitAbort = new AbortController();
+    const waiting = client.callTool({ name: 'vs2015_ide_debug_wait', arguments: { sessionId, mode: 'break', timeoutMs: 60000 } },
+      { timeout: 90000, signal: waitAbort.signal }).catch(error => error);
+    await new Promise(resolve => setTimeout(resolve, 300)); waitAbort.abort('Cancel only the wait');
+    assert.ok(await waiting instanceof Error);
+    assert.equal((await scoped('vs2015_ide_debug_state')).mode, 'design');
 
     await scoped('vs2015_document_open', { path: source, line: 9 });
     const before = await scoped('vs2015_document_read', { path: source });
@@ -90,6 +102,9 @@ test('persistent MCP IDE session builds, edits, hits a breakpoint and reads vari
     assert.equal((await scoped('vs2015_detach')).ideClosed, false);
     const invalid = await raw('vs2015_solution_status', { sessionId }); assert.equal(invalid.isError, true); assert.equal(invalid.structuredContent.error.code, 'SESSION_NOT_FOUND');
     sessionId = undefined;
+    const handoff = await contender.callTool({ name: 'vs2015_attach', arguments: { processId, expectedStartTimeUtc } }, { timeout: 90000 });
+    assert.equal(handoff.isError, false, JSON.stringify(handoff)); contenderSessionId = handoff.structuredContent.sessionId;
+    await contender.callTool({ name: 'vs2015_detach', arguments: { sessionId: contenderSessionId } }); contenderSessionId = undefined;
     process.kill(processId, 0); // Detaching the bridge must leave the owned IDE alive.
   } finally {
     if (sessionId) {
@@ -99,5 +114,7 @@ test('persistent MCP IDE session builds, edits, hits a breakpoint and reads vari
       try { await scoped('vs2015_detach'); } catch {}
     }
     await client.close();
+    if (contenderSessionId) await contender.callTool({ name: 'vs2015_detach', arguments: { sessionId: contenderSessionId } }).catch(() => {});
+    await contender.close();
   }
 });

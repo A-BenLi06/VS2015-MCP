@@ -155,3 +155,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T20:39:39+08:00 — 持久 VS2015 IDE 自动化
 新增Framework x86 C# STA常驻桥接、WinForms消息循环、ROT按PID/启动时间连接、跨桥接实例租约、有界COM busy重试与事件订阅。新增20项IDE工具覆盖活动解决方案/配置平台、文档未保存编辑与冲突检查、事件驱动build/rebuild/clean/deploy、ErrorList/Output、断点/运行/暂停/单步/停止、线程/栈/locals/表达式和带游标等待。Node串行队列取消不重放、超时仅终止桥接并作废会话，不关闭IDE。编译器动态发现VS14安装及本机interop引用，不含二进制依赖。实测发现clean后异步Build调用可能被VS忽略，rebuild改为固定标准IDE命令，仍校验RebuildAll事件。强化订阅失败回滚、Dispose释放租约、COM回调异常不误报成功。验证：5项真实子进程生命周期回归通过；自有TEMP VS2015实例通过完整MCP编辑→重建→警告/输出→断点→变量21/42→单步→停止→detach，用户原有3个IDE未操作。
 
+
+## 2026-11-17T20:40:44+08:00 — IDE租约与取消的实机回归
+扩展IDE端到端测试：两个独立MCP客户端连接同一自有IDE时第二个收到SESSION_BUSY，首个detach后第二个可接管；取消等待断点只结束等待，IDE仍保持design且后续工作流可用。同时检查活动平台。完整MCP编辑/重建/断点/单步回归通过。
+
