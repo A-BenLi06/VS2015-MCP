@@ -108,3 +108,7 @@ Added profile_compare with source verification and operation/context/collector/s
 ## 2026-11-17T17:12:16+08:00 — Managed heap type statistics from dumps
 Added optional offline Framework SOS heapSummary to CDB dump analysis using !eeheap -gc and !dumpheap -stat, with explicit runtime validation. It reports heap/type statistics in the raw transcript and does not claim allocation history or retained-size analysis. Validation: debugger integration dry-run commands and invalid runtime rejection passed; real dump analysis still requires CDB and a suitable full-memory dump.
 
+
+## 2026-11-17T17:12:49+08:00 — Discover profile targets through MCP
+Added host process inventory with optional name filtering, PID/start-time identity and explicit inaccessible details. This completes target selection through MCP without relying on an external shell and distinguishes host PIDs from mobile guest apps. Validation: actual process discovery plus MCP sampling/history comparison integration passed.
+

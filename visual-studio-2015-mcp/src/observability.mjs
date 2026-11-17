@@ -34,6 +34,9 @@ async function sampleSide(input) {
 }
 
 export const observabilityDefinitions = [
+  { name: 'vs2015_processes', readOnly: true, description: 'List host process IDs/names/start times and accessible executable paths before sampling or debugging. An emulator host PID is not the guest phone application PID. Inaccessible details remain null.',
+    schema: z.object({ nameContains: text.optional(), limit: z.number().int().min(1).max(1000).default(100) }),
+    run: (input, ctx) => invokeBackend({ ...input, operation: 'list' }, { ...ctx, script: 'Sample-Process.ps1' }) },
   { name: 'vs2015_history_create', description: 'Create an immutable experiment/run identity with an operation label and comparable context (target, configuration, architecture, workload). Store revision separately so before/after builds can be compared.',
     schema: z.object({ operation: text, context: context.default({}), revision: text.optional() }), run: input => createRun(input) },
   { name: 'vs2015_history_list', readOnly: true, description: 'List recent locally recorded runs, optionally filtered by exact operation label.',
@@ -51,7 +54,7 @@ export const observabilityDefinitions = [
       const outputPath = path.join(runDirectory(input.runId), `process-${randomUUID()}.jsonl`);
       await appendEvent(input.runId, { kind: 'captureStarted', processId: input.processId, outputPath });
       try {
-        const result = await invokeBackend({ ...input, outputPath, timeoutMs: input.durationMs + 30000, setupTimeoutMs: 0 }, { ...ctx, script: 'Sample-Process.ps1' });
+        const result = await invokeBackend({ ...input, operation: 'sample', outputPath, timeoutMs: input.durationMs + 30000, setupTimeoutMs: 0 }, { ...ctx, script: 'Sample-Process.ps1' });
         const source = await snapshotFile(input.runId, outputPath);
         const trace = await readJsonLines(source.path, { expectedSha256: source.sha256 }), summary = summarizeSamples(trace.events, { parseWarnings: trace.warnings });
         const artifact = await saveArtifact(input.runId, 'process-samples', { ...measurement, capture: { ...result, path: source.path }, source, summary, parseWarnings: trace.warnings });

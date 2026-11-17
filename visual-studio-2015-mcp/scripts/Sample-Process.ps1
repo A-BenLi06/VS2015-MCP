@@ -6,6 +6,23 @@ $ErrorActionPreference = 'Stop'
 $writer = $null
 try {
     $request = [Console]::In.ReadToEnd() | ConvertFrom-Json -AsHashtable
+    if ($request.ContainsKey('operation') -and $request.operation -eq 'list') {
+        $items = [Collections.Generic.List[object]]::new()
+        foreach ($candidate in [Diagnostics.Process]::GetProcesses()) {
+            try {
+                $name = $candidate.ProcessName
+                if ($request.ContainsKey('nameContains') -and $request.nameContains -and $name.IndexOf([string]$request.nameContains, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+                $item = @{processId=$candidate.Id;processName=$name;startTimeUtc=$null;executable=$null;detailsUnavailable=$false}
+                try { $item.startTimeUtc=$candidate.StartTime.ToUniversalTime().ToString('o');$item.executable=$candidate.MainModule.FileName }
+                catch { $item.detailsUnavailable=$true }
+                $items.Add($item)
+            } catch { } finally { $candidate.Dispose() }
+        }
+        $limit = [int]$request.limit
+        if ($limit -lt 1 -or $limit -gt 1000) { throw 'Process inventory limit must be 1..1000.' }
+        [Console]::Out.WriteLine((@{processes=@($items | Sort-Object -Property processName,processId | Select-Object -First $limit);matched=$items.Count;truncated=($items.Count -gt $limit);scope='host'} | ConvertTo-Json -Depth 6 -Compress))
+        exit 0
+    }
     $targetProcessId = [int]$request.processId
     $duration = [int]$request.durationMs
     $interval = [int]$request.intervalMs
