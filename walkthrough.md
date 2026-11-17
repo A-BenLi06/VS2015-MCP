@@ -140,3 +140,6 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T18:41:23+08:00 — v0.2.1 接入配置与双目标边界
 更新文档为本轮真实验证结果，并提供手机客体性能接入现状（WP8.1 CoreCon/WpWpr、Win10M Device Portal/WPR，未实现实采，不误称宿主计数为客体热点）。Print-McpConfig新增显式PerfView/Debugger/History路径，并修复PATH中多个node/pwsh导致配置command/env成为数组的问题；始终选择首个实际命令来源。版本更新0.2.1。验证：25项单元测试通过；真实PerfView CPU/GC/历史对照、CDB自有进程快照和dump测试通过；配置与调试集成2项通过；由生成配置启动MCP确认45工具、5资源且发现实际CDB/PerfView。无遗留PerfView/CDB/测试fixture进程。当前仍未验证管理员VSPerf实时采集与手机客体采集。
 
+
+## 2026-11-17T20:08:28+08:00 — 对接 VS2015-MCP 远端并启用提交后自动推送
+保留原 origin 指向 MetroApp-developing-skill，新增 vs2015-mcp 远端。因远端 main 是独立初始提交，与本地历史无共同祖先，在 codex/vs2015-mcp 分支发布现有项目历史，避免覆盖远端 main。AGENTS.md 现在要求每次提交后推送当前分支上游，首次发布分支时设置 upstream，并禁止 force-push。验证：已读取远端 main 并确认两侧无共同祖先；本次提交推送后将确认上游及工作区状态。
