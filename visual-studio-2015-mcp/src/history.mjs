@@ -158,6 +158,9 @@ export function compareHotspots(baselineRun, candidateRun, baseline, candidate, 
     const map = new Map();
     for (const row of report.hotspots) {
       const key = JSON.stringify([row.module, row.symbol]);
+      if (report.valueSemantics !== 'total' && map.has(key)) {
+        throw new Error('Duplicate module/symbol keys in a non-total report require explicit aggregation semantics; refusing to sum rates, ratios or gauges.');
+      }
       const previous = map.get(key) ?? { ...row, value: 0 };
       previous.value += row.value / divisor(report); map.set(key, previous);
     }

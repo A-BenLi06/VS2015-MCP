@@ -5,12 +5,33 @@ import { createRun, readRun, listRuns, timeline, appendEvent, saveArtifact, read
 import { readJsonLines, summarizeSamples } from './samples.mjs';
 import { invokeBackend } from './bridge.mjs';
 import { asToolResult } from './tools.mjs';
+import { compareProcessSummaries } from './process-comparison.mjs';
 
 const id = z.guid();
 const text = z.string().min(1).max(4096);
 const context = z.record(z.string(), z.string());
 const csv = { path: text, delimiter: z.string().length(1).default(','), encoding: text.default('utf-8'), headerRow: z.number().int().min(0).default(0) };
 const artifactRef = { runId: id, artifactId: id };
+const sampleRef = z.object({ ...artifactRef, actionId: id.optional() });
+
+async function sampleSide(input) {
+  const artifact = await readArtifact(input.runId, input.artifactId);
+  if (artifact.kind !== 'process-samples') throw new Error('Expected a process-samples artifact.');
+  let window = {}, action;
+  if (input.actionId) {
+    const { events } = await timeline(input.runId);
+    const start = events.find(event => event.kind === 'actionStarted' && event.actionId === input.actionId);
+    const end = events.find(event => event.kind === 'actionFinished' && event.actionId === input.actionId);
+    if (!start || !end) throw new Error('Action span is incomplete or not part of this run.');
+    window = { startUtc: start.timestampUtc, endUtc: end.timestampUtc };
+    action = { ...window, label: start.label, toolName: start.toolName, success: end.success };
+  }
+  const trace = await readJsonLines(artifact.data.capture.path, { expectedSha256: artifact.data.source?.sha256 });
+  const warnings = [...trace.warnings, ...(artifact.data.interrupted ? [artifact.data.interrupted] : [])];
+  return { run: await readRun(input.runId), collector: artifact.data.collector, settings: artifact.data.settings,
+    evidenceVerified: Boolean(artifact.data.source?.sha256), action,
+    summary: { ...summarizeSamples(trace.events, { ...window, top: input.top, parseWarnings: warnings }), parseWarnings: warnings } };
+}
 
 export const observabilityDefinitions = [
   { name: 'vs2015_history_create', description: 'Create an immutable experiment/run identity with an operation label and comparable context (target, configuration, architecture, workload). Store revision separately so before/after builds can be compared.',
@@ -26,13 +47,14 @@ export const observabilityDefinitions = [
       intervalMs: z.number().int().min(250).max(30000).default(1000), includeClr: z.boolean().default(true) }),
     run: async (input, ctx) => {
       await readRun(input.runId);
+      const measurement = { collector: 'vs2015-process-counters/1', settings: { intervalMs: input.intervalMs, includeClr: input.includeClr } };
       const outputPath = path.join(runDirectory(input.runId), `process-${randomUUID()}.jsonl`);
       await appendEvent(input.runId, { kind: 'captureStarted', processId: input.processId, outputPath });
       try {
         const result = await invokeBackend({ ...input, outputPath, timeoutMs: input.durationMs + 30000, setupTimeoutMs: 0 }, { ...ctx, script: 'Sample-Process.ps1' });
         const source = await snapshotFile(input.runId, outputPath);
         const trace = await readJsonLines(source.path, { expectedSha256: source.sha256 }), summary = summarizeSamples(trace.events, { parseWarnings: trace.warnings });
-        const artifact = await saveArtifact(input.runId, 'process-samples', { capture: { ...result, path: source.path }, source, summary, parseWarnings: trace.warnings });
+        const artifact = await saveArtifact(input.runId, 'process-samples', { ...measurement, capture: { ...result, path: source.path }, source, summary, parseWarnings: trace.warnings });
         return { ...artifact, summary };
       } catch (error) {
         let partial = null, snapshotError;
@@ -40,7 +62,7 @@ export const observabilityDefinitions = [
           const source = await snapshotFile(input.runId, outputPath);
           const trace = await readJsonLines(source.path, { expectedSha256: source.sha256 });
           const summary = summarizeSamples(trace.events, { parseWarnings: [...trace.warnings, error.message] });
-          partial = await saveArtifact(input.runId, 'process-samples', { capture: { path: source.path, complete: false }, source, summary, interrupted: error.message });
+          partial = await saveArtifact(input.runId, 'process-samples', { ...measurement, capture: { path: source.path, complete: false }, source, summary, interrupted: error.message });
         } catch (failure) { snapshotError = failure.message; }
         await appendEvent(input.runId, { kind: 'captureInterrupted', outputPath, message: error.message, partial, snapshotError });
         return { ...(partial ?? {}), error: { code: 'CAPTURE_INTERRUPTED', message: error.message }, snapshotError };
@@ -48,21 +70,10 @@ export const observabilityDefinitions = [
     } },
   { name: 'vs2015_profile_summary', readOnly: true, description: 'Read a process capture, optionally selecting only full sample intervals within a recorded action span. Timing association does not establish causality.',
     schema: z.object({ ...artifactRef, actionId: id.optional(), top: z.number().int().min(1).max(100).default(10) }),
-    run: async input => {
-      const artifact = await readArtifact(input.runId, input.artifactId);
-      if (artifact.kind !== 'process-samples') throw new Error('Expected a process-samples artifact.');
-      let window = {};
-      if (input.actionId) {
-        const { events } = await timeline(input.runId);
-        const start = events.find(event => event.kind === 'actionStarted' && event.actionId === input.actionId);
-        const end = events.find(event => event.kind === 'actionFinished' && event.actionId === input.actionId);
-        if (!start || !end) throw new Error('Action span is incomplete or not part of this run.');
-        window = { startUtc: start.timestampUtc, endUtc: end.timestampUtc };
-      }
-      const trace = await readJsonLines(artifact.data.capture.path, { expectedSha256: artifact.data.source?.sha256 });
-      const warnings = [...trace.warnings, ...(artifact.data.interrupted ? [artifact.data.interrupted] : [])];
-      return { ...summarizeSamples(trace.events, { ...window, top: input.top, parseWarnings: warnings }), parseWarnings: warnings };
-    } },
+    run: async input => (await sampleSide(input)).summary },
+  { name: 'vs2015_profile_compare', readOnly: true, description: 'Compare verified process captures or matching recorded action spans. Check operation/context/settings/collector and completeness. CPU and CLR rates use their own measured elapsed time; observed memory peaks remain bytes. No function-level attribution is inferred.',
+    schema: z.object({ baseline: sampleRef, candidate: sampleRef, groups: z.array(z.enum(['cpu', 'memory', 'clr'])).min(1).default(['cpu', 'memory']) }),
+    run: async input => { const [baseline, candidate] = await Promise.all([sampleSide(input.baseline), sampleSide(input.candidate)]); return compareProcessSummaries(baseline, candidate, input); } },
   { name: 'vs2015_report_inspect', readOnly: true, description: 'Inspect actual CSV headers and sample rows from VSPerfReport/PerfView/other exports. Explicit delimiter, encoding and column mapping avoid language-dependent header guesses.',
     schema: z.object(csv), run: async input => {
       const rows = await csvRows(input.path, input);

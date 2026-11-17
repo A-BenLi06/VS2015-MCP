@@ -20,7 +20,8 @@ export function summarizeSamples(events, { startUtc, endUtc, top = 10, parseWarn
   const footer = events.at(-1)?.kind === 'end' ? events.at(-1) : null;
   const rawSamples = events.filter(event => event.kind === 'sample');
   let valid = Boolean(header?.schemaVersion === 1 && Number.isInteger(header.logicalProcessors) && header.logicalProcessors > 0 && footer?.samples === rawSamples.length && !parseWarnings.length);
-  const intervals = [], warnings = [...parseWarnings, ...(footer?.warnings ?? [])];
+  const intervals = [], clrIntervals = [], warnings = [...parseWarnings, ...(footer?.warnings ?? [])];
+  let clrMissingIntervals = 0, clrRejectedIntervals = 0;
   const samples = rawSamples.filter(sample => {
     const good = Number.isFinite(Date.parse(sample.timestampUtc)) && ['elapsedMs', 'cpuTotalMs', 'privateBytes', 'workingSetBytes'].every(key => Number.isFinite(sample[key]) && sample[key] >= 0);
     if (!good) { valid = false; warnings.push('Invalid process sample fields; sample omitted.'); }
@@ -30,42 +31,60 @@ export function summarizeSamples(events, { startUtc, endUtc, top = 10, parseWarn
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) throw new Error('Invalid operation time window.');
   for (let i = 1; i < samples.length; i++) {
     const a = samples[i - 1], b = samples[i];
-    if (Date.parse(a.timestampUtc) < start || Date.parse(b.timestampUtc) > end) continue;
+    const cpuInWindow = Date.parse(a.timestampUtc) >= start && Date.parse(b.timestampUtc) <= end;
     const elapsedMs = b.elapsedMs - a.elapsedMs, cpuMs = b.cpuTotalMs - a.cpuTotalMs;
     if (!(elapsedMs > 0) || cpuMs < 0 || Date.parse(b.timestampUtc) <= Date.parse(a.timestampUtc)) { valid = false; warnings.push('Non-monotonic process counters; interval omitted.'); continue; }
     const interval = { startUtc: a.timestampUtc, endUtc: b.timestampUtc, elapsedMs, cpuMs,
-      cpuOneCorePercent: cpuMs / elapsedMs * 100, cpuMachinePercent: cpuMs / elapsedMs / (header?.logicalProcessors || 1) * 100,
+      cpuOneCorePercent: cpuMs / elapsedMs * 100,
+      cpuMachinePercent: Number.isInteger(header?.logicalProcessors) && header.logicalProcessors > 0 ? cpuMs / elapsedMs / header.logicalProcessors * 100 : null,
       privateBytes: b.privateBytes, privateBytesDelta: b.privateBytes - a.privateBytes, workingSetBytes: b.workingSetBytes,
       clr: null };
-    if (a.clr && b.clr && a.clr.instance === b.clr.instance) {
+    if (a.clr && b.clr) {
       const clrStart = Date.parse(a.clr.timestampUtc), clrEnd = Date.parse(b.clr.timestampUtc);
+      const validBounds = Number.isFinite(clrStart) && Number.isFinite(clrEnd) && clrEnd > clrStart;
+      const clrInWindow = validBounds && clrStart >= start && clrEnd <= end;
       const keys = ['allocatedBytesCounter', 'gen0Collections', 'gen1Collections', 'gen2Collections'];
       const delta = Object.fromEntries(keys.map(key => [key, b.clr[key] - a.clr[key]]));
-      if (Number.isFinite(clrStart) && Number.isFinite(clrEnd) && clrEnd > clrStart && clrStart >= start && clrEnd <= end && Object.values(delta).every(value => Number.isFinite(value) && value >= 0)) {
+      const validCounters = a.clr.instance === b.clr.instance &&
+        keys.every(key => Number.isFinite(a.clr[key]) && a.clr[key] >= 0 && Number.isFinite(b.clr[key]) && b.clr[key] >= 0) &&
+        Object.values(delta).every(value => Number.isFinite(value) && value >= 0);
+      if (clrInWindow && validCounters) {
         interval.clr = { allocatedBytes: delta.allocatedBytesCounter, gen0Collections: delta.gen0Collections,
           gen1Collections: delta.gen1Collections, gen2Collections: delta.gen2Collections,
+          startUtc: a.clr.timestampUtc, endUtc: b.clr.timestampUtc,
           elapsedMs: clrEnd - clrStart, heapBytes: b.clr.heapBytes, largeObjectHeapBytes: b.clr.largeObjectHeapBytes };
-      } else warnings.push('CLR counter reset/wrap, missing timestamp/value, or interval outside the operation window; CLR deltas omitted.');
-    }
-    intervals.push(interval);
+        // A CLR measurement can be inside the action even when the CPU interval
+        // starts before it. Never gate this accumulator on cpuInWindow.
+        clrIntervals.push(interval.clr);
+      } else if ((clrInWindow && !validCounters) || (cpuInWindow && !validBounds)) {
+        clrRejectedIntervals++;
+        warnings.push('CLR counter reset/wrap, changed instance, or missing timestamp/value; CLR interval omitted.');
+      }
+    } else if (cpuInWindow) clrMissingIntervals++;
+    if (cpuInWindow) intervals.push(interval);
   }
   if (!footer) warnings.push('Missing capture footer: interrupted capture, not a complete measurement.');
   if (!valid) warnings.push('Capture metadata, sample count or data integrity could not be verified.');
   if (startUtc || endUtc) warnings.push('Only whole sampling intervals within the action are included; short actions may have no samples. This is temporal association, not causal attribution.');
   const elapsedMs = intervals.reduce((sum, item) => sum + item.elapsedMs, 0);
   const cpuMs = intervals.reduce((sum, item) => sum + item.cpuMs, 0);
-  const clrIntervals = intervals.filter(item => item.clr);
   const memorySamples = samples.filter(sample => Date.parse(sample.timestampUtc) >= start && Date.parse(sample.timestampUtc) <= end);
   return { identity: header?.identity, captureFinished: Boolean(footer), complete: Boolean(valid && footer?.complete), requestedWindow: { startUtc, endUtc },
-    sampleCount: samples.length, intervalCount: intervals.length, measuredIntervalMs: elapsedMs, cpuMs,
+    sampleCount: samples.length, memorySampleCount: memorySamples.length, intervalCount: intervals.length, measuredIntervalMs: elapsedMs, cpuMs,
+    logicalProcessors: Number.isInteger(header?.logicalProcessors) && header.logicalProcessors > 0 ? header.logicalProcessors : null,
     cpuOneCorePercent: elapsedMs ? cpuMs / elapsedMs * 100 : null,
+    cpuMachinePercent: elapsedMs && Number.isInteger(header?.logicalProcessors) && header.logicalProcessors > 0 ? cpuMs / elapsedMs / header.logicalProcessors * 100 : null,
     peakPrivateBytes: memorySamples.length ? Math.max(...memorySamples.map(item => item.privateBytes)) : null,
     peakWorkingSetBytes: memorySamples.length ? Math.max(...memorySamples.map(item => item.workingSetBytes)) : null,
-    clr: clrIntervals.length ? { observedIntervals: clrIntervals.length, measuredIntervalMs: clrIntervals.reduce((sum, item) => sum + item.clr.elapsedMs, 0),
-      allocatedBytes: clrIntervals.reduce((sum, item) => sum + item.clr.allocatedBytes, 0),
-      gen0Collections: clrIntervals.reduce((sum, item) => sum + item.clr.gen0Collections, 0),
-      gen1Collections: clrIntervals.reduce((sum, item) => sum + item.clr.gen1Collections, 0),
-      gen2Collections: clrIntervals.reduce((sum, item) => sum + item.clr.gen2Collections, 0) } : null,
+    clr: clrIntervals.length ? {
+      complete: Boolean(valid && footer?.complete && clrMissingIntervals === 0 && clrRejectedIntervals === 0),
+      observedIntervals: clrIntervals.length, measuredIntervalMs: clrIntervals.reduce((sum, item) => sum + item.elapsedMs, 0),
+      firstSampleUtc: clrIntervals[0].startUtc, lastSampleUtc: clrIntervals.at(-1).endUtc,
+      allocatedBytes: clrIntervals.reduce((sum, item) => sum + item.allocatedBytes, 0),
+      gen0Collections: clrIntervals.reduce((sum, item) => sum + item.gen0Collections, 0),
+      gen1Collections: clrIntervals.reduce((sum, item) => sum + item.gen1Collections, 0),
+      gen2Collections: clrIntervals.reduce((sum, item) => sum + item.gen2Collections, 0) } : null,
+    clrCoverage: { observedIntervals: clrIntervals.length, missingIntervals: clrMissingIntervals, rejectedIntervals: clrRejectedIntervals },
     cpuHotIntervals: [...intervals].sort((a, b) => b.cpuOneCorePercent - a.cpuOneCorePercent).slice(0, top),
     memoryGrowthIntervals: [...intervals].sort((a, b) => b.privateBytesDelta - a.privateBytesDelta).slice(0, top),
     warnings: [...new Set(warnings)],

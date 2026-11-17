@@ -43,4 +43,6 @@ test('comparisons normalize exposure and reject incompatible measurements', () =
   const ratio = { ...baseline, unit: '%', valueSemantics: 'ratio' };
   assert.throws(() => compareHotspots(run, run, ratio, { ...ratio, durationMs: 2000 }), /normalization=none/);
   assert.equal(compareHotspots(run, run, ratio, { ...ratio, durationMs: 2000 }, { normalization: 'none' }).rows[0].delta, 0);
+  const repeated = { ...ratio, hotspots: [...ratio.hotspots, ...ratio.hotspots] };
+  assert.throws(() => compareHotspots(run, run, repeated, repeated, { normalization: 'none' }), /Duplicate/);
 });

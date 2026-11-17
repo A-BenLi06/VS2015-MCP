@@ -36,5 +36,20 @@ test('MCP records real action times and compares imported localized reports', as
     assert.equal(comparison.comparable, true);
     assert.equal(comparison.rows.find(row => row.symbol === 'A').delta, 5);
     assert.equal((await call('vs2015_history_list', { operation: 'load' })).runs.length, 2);
+    if (process.platform === 'win32') {
+      const captures = await Promise.all([a, b].map(run => call('vs2015_profile_sample', { runId: run.id, processId: process.pid, durationMs: 1300, intervalMs: 250, includeClr: false })));
+      assert.ok(captures.every(value => value.summary.complete));
+      const baseline = { runId: a.id, artifactId: captures[0].artifactId }, candidate = { runId: b.id, artifactId: captures[1].artifactId };
+      const processComparison = await call('vs2015_profile_compare', { baseline, candidate });
+      assert.equal(processComparison.comparable, true, JSON.stringify(processComparison));
+      assert.ok(processComparison.rows.some(row => row.metric === 'peakPrivateBytes'));
+      const clr = await call('vs2015_profile_compare', { baseline, candidate, groups: ['clr'] });
+      assert.equal(clr.comparable, false);
+      const artifact = await call('vs2015_history_artifact', baseline);
+      await writeFile(artifact.data.source.path, '{}');
+      const tampered = await client.callTool({ name: 'vs2015_profile_summary', arguments: baseline });
+      assert.equal(tampered.isError, true);
+      assert.match(tampered.structuredContent.error.message, /hash changed/);
+    }
   } finally { await client.close(); await rm(directory, { recursive: true, force: true }); }
 });
