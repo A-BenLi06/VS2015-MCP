@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { createRun, appendEvent, timeline, saveArtifact, readArtifact, runDirectory, parseCsv, importHotspots, compareHotspots } from '../src/history.mjs';
+import { createRun, listRuns, appendEvent, timeline, saveArtifact, readArtifact, runDirectory, parseCsv, importHotspots, compareHotspots } from '../src/history.mjs';
 
 test('history preserves concurrent action events and immutable artifacts', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vs-history-'));
@@ -14,6 +14,8 @@ test('history preserves concurrent action events and immutable artifacts', async
     const artifact = await saveArtifact(run.id, 'test', { value: 3 }, root);
     assert.equal((await readArtifact(run.id, artifact.artifactId, root)).data.value, 3);
     assert.throws(() => runDirectory('../escape', root), /Invalid/);
+    await Promise.all(Array.from({ length: 20 }, async () => { await createRun({ operation: 'concurrent' }, root); await listRuns({}, root); }));
+    assert.equal((await listRuns({ limit: 100 }, root)).length, 21);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -28,7 +30,7 @@ test('CSV import uses explicit localized columns and numeric conventions', () =>
 
 test('comparisons normalize exposure and reject incompatible measurements', () => {
   const run = { operation: 'load', context: { target: 'fixture' } };
-  const baseline = { metric: 'cpu', unit: 'samples', attribution: 'exclusive', collector: 'fixture', scope: 'process', durationMs: 1000, complete: true,
+  const baseline = { metric: 'cpu', unit: 'samples', valueSemantics: 'total', attribution: 'exclusive', collector: 'fixture', scope: 'process', durationMs: 1000, complete: true,
     hotspots: [{ symbol: 'A', module: 'm', value: 10 }] };
   const candidate = { ...baseline, durationMs: 2000, hotspots: [{ symbol: 'A', module: 'm', value: 30 }, { symbol: 'B', module: 'm', value: 2 }] };
   const result = compareHotspots(run, run, baseline, candidate);
@@ -38,4 +40,7 @@ test('comparisons normalize exposure and reject incompatible measurements', () =
   assert.equal(compareHotspots(run, { ...run, operation: 'other' }, baseline, candidate).comparable, false);
   const partial = compareHotspots(run, run, { ...baseline, complete: false }, candidate);
   assert.equal(partial.rows.find(row => row.symbol === 'B').baseline, null);
+  const ratio = { ...baseline, unit: '%', valueSemantics: 'ratio' };
+  assert.throws(() => compareHotspots(run, run, ratio, { ...ratio, durationMs: 2000 }), /normalization=none/);
+  assert.equal(compareHotspots(run, run, ratio, { ...ratio, durationMs: 2000 }, { normalization: 'none' }).rows[0].delta, 0);
 });

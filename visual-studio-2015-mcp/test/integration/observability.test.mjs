@@ -29,7 +29,7 @@ test('MCP records real action times and compares imported localized reports', as
     assert.equal(JSON.stringify(history.events).includes(solution), false);
     const reportA = path.join(directory, 'before.csv'), reportB = path.join(directory, 'after.csv');
     await writeFile(reportA, '函数,样本\nA,10\n'); await writeFile(reportB, '函数,样本\nA,30\nB,2\n');
-    const mapping = { symbolColumn: '函数', valueColumn: '样本', metric: 'cpu', unit: 'samples', attribution: 'exclusive', collector: 'fixture-v1', scope: 'target process', complete: true };
+    const mapping = { symbolColumn: '函数', valueColumn: '样本', metric: 'cpu', unit: 'samples', valueSemantics: 'total', attribution: 'exclusive', collector: 'fixture-v1', scope: 'target process', complete: true };
     const aa = await call('vs2015_hotspots_import', { ...mapping, runId: a.id, path: reportA, durationMs: 1000 });
     const bb = await call('vs2015_hotspots_import', { ...mapping, runId: b.id, path: reportB, durationMs: 2000 });
     const comparison = await call('vs2015_hotspots_compare', { baselineRunId: a.id, baselineArtifactId: aa.artifactId, candidateRunId: b.id, candidateArtifactId: bb.artifactId });

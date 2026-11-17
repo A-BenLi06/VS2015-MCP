@@ -28,12 +28,20 @@ export const observabilityDefinitions = [
       await appendEvent(input.runId, { kind: 'captureStarted', processId: input.processId, outputPath });
       try {
         const result = await invokeBackend({ ...input, outputPath, timeoutMs: input.durationMs + 30000, setupTimeoutMs: 0 }, { ...ctx, script: 'Sample-Process.ps1' });
-        const trace = await readJsonLines(outputPath), summary = summarizeSamples(trace.events);
-        const artifact = await saveArtifact(input.runId, 'process-samples', { capture: result, summary, parseWarnings: trace.warnings });
+        const source = await snapshotFile(input.runId, outputPath);
+        const trace = await readJsonLines(source.path, { expectedSha256: source.sha256 }), summary = summarizeSamples(trace.events, { parseWarnings: trace.warnings });
+        const artifact = await saveArtifact(input.runId, 'process-samples', { capture: { ...result, path: source.path }, source, summary, parseWarnings: trace.warnings });
         return { ...artifact, summary };
       } catch (error) {
-        await appendEvent(input.runId, { kind: 'captureInterrupted', outputPath, message: error.message });
-        throw error;
+        let partial = null, snapshotError;
+        try {
+          const source = await snapshotFile(input.runId, outputPath);
+          const trace = await readJsonLines(source.path, { expectedSha256: source.sha256 });
+          const summary = summarizeSamples(trace.events, { parseWarnings: [...trace.warnings, error.message] });
+          partial = await saveArtifact(input.runId, 'process-samples', { capture: { path: source.path, complete: false }, source, summary, interrupted: error.message });
+        } catch (failure) { snapshotError = failure.message; }
+        await appendEvent(input.runId, { kind: 'captureInterrupted', outputPath, message: error.message, partial, snapshotError });
+        return { ...(partial ?? {}), error: { code: 'CAPTURE_INTERRUPTED', message: error.message }, snapshotError };
       }
     } },
   { name: 'vs2015_profile_summary', readOnly: true, description: 'Read a process capture, optionally selecting only full sample intervals within a recorded action span. Timing association does not establish causality.',
@@ -49,8 +57,9 @@ export const observabilityDefinitions = [
         if (!start || !end) throw new Error('Action span is incomplete or not part of this run.');
         window = { startUtc: start.timestampUtc, endUtc: end.timestampUtc };
       }
-      const trace = await readJsonLines(artifact.data.capture.path);
-      return { ...summarizeSamples(trace.events, { ...window, top: input.top }), parseWarnings: trace.warnings };
+      const trace = await readJsonLines(artifact.data.capture.path, { expectedSha256: artifact.data.source?.sha256 });
+      const warnings = [...trace.warnings, ...(artifact.data.interrupted ? [artifact.data.interrupted] : [])];
+      return { ...summarizeSamples(trace.events, { ...window, top: input.top, parseWarnings: warnings }), parseWarnings: warnings };
     } },
   { name: 'vs2015_report_inspect', readOnly: true, description: 'Inspect actual CSV headers and sample rows from VSPerfReport/PerfView/other exports. Explicit delimiter, encoding and column mapping avoid language-dependent header guesses.',
     schema: z.object(csv), run: async input => {
@@ -61,7 +70,7 @@ export const observabilityDefinitions = [
   { name: 'vs2015_hotspots_import', description: 'Snapshot a profiler CSV and import explicitly mapped function/type hotspots. State metric, unit, attribution, process/operation scope, collector version/settings and capture exposure. Set complete=false for top-N or filtered reports.',
     schema: z.object({ ...csv, runId: id, symbolColumn: text, valueColumn: text, moduleColumn: text.optional(),
       decimalSeparator: z.enum(['.', ',']).default('.'), thousandsSeparator: z.string().max(1).default(''),
-      metric: text, unit: text, attribution: z.enum(['exclusive', 'inclusive', 'type']), collector: text,
+      metric: text, unit: text, valueSemantics: z.enum(['total', 'rate', 'ratio', 'gauge']), attribution: z.enum(['exclusive', 'inclusive', 'type']), collector: text,
       scope: text, settings: context.default({}), durationMs: z.number().positive(), workUnits: z.number().positive().optional(), complete: z.boolean().default(false) }),
     run: async input => {
       const source = await snapshotFile(input.runId, input.path);
@@ -73,7 +82,7 @@ export const observabilityDefinitions = [
     } },
   { name: 'vs2015_hotspots_compare', readOnly: true, description: 'Compare history hotspot reports only when operation, context, units, attribution, collector and settings match. Normalize by capture time or completed operations. Missing partial-report rows and zero baselines remain explicit.',
     schema: z.object({ baselineRunId: id, baselineArtifactId: id, candidateRunId: id, candidateArtifactId: id,
-      normalization: z.enum(['perSecond', 'perOperation', 'total']).default('perSecond'), limit: z.number().int().min(1).max(500).default(50) }),
+      normalization: z.enum(['perSecond', 'perOperation', 'none', 'total']).default('perSecond'), limit: z.number().int().min(1).max(500).default(50) }),
     run: async input => {
       const [aRun, bRun, a, b] = await Promise.all([readRun(input.baselineRunId), readRun(input.candidateRunId),
         readArtifact(input.baselineRunId, input.baselineArtifactId), readArtifact(input.candidateRunId, input.candidateArtifactId)]);

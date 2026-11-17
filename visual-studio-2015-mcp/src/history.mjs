@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile, readdir, stat, copyFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, readdir, stat, copyFile, rename } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 
@@ -12,10 +12,18 @@ export function runDirectory(id, root = historyRoot()) {
 export async function createRun({ operation, context = {}, revision = null }, root = historyRoot()) {
   if (!operation?.trim()) throw new Error('A meaningful operation label is required.');
   const id = randomUUID(), directory = runDirectory(id, root);
-  await mkdir(directory, { recursive: true });
+  await mkdir(root, { recursive: true });
+  const staging = path.join(root, `.${id}.pending`);
+  await mkdir(staging);
   const run = { schemaVersion: 1, id, operation, context, revision, createdAt: new Date().toISOString() };
-  await writeFile(path.join(directory, 'run.json'), JSON.stringify(run, null, 2), { flag: 'wx' });
+  await writeFile(path.join(staging, 'run.json'), JSON.stringify(run, null, 2), { flag: 'wx' });
+  await rename(staging, directory);
   return { ...run, directory };
+}
+async function publishJson(filename, value) {
+  const temporary = `${filename}.${randomUUID()}.pending`;
+  await writeFile(temporary, JSON.stringify(value), { flag: 'wx' });
+  await rename(temporary, filename);
 }
 export async function readRun(id, root = historyRoot()) {
   return JSON.parse(await readFile(path.join(runDirectory(id, root), 'run.json'), 'utf8'));
@@ -25,7 +33,7 @@ export async function appendEvent(id, event, root = historyRoot()) {
   const record = { ...event, id: randomUUID(), timestampUtc: new Date().toISOString() };
   const directory = path.join(runDirectory(id, root), 'events');
   await mkdir(directory, { recursive: true });
-  await writeFile(path.join(directory, `${record.id}.json`), JSON.stringify(record), { flag: 'wx' });
+  await publishJson(path.join(directory, `${record.id}.json`), record);
   return record;
 }
 export async function saveArtifact(id, kind, data, root = historyRoot()) {
@@ -34,7 +42,7 @@ export async function saveArtifact(id, kind, data, root = historyRoot()) {
   await mkdir(directory, { recursive: true });
   const artifact = { schemaVersion: 1, id: artifactId, kind, createdAt: new Date().toISOString(), data };
   const filename = path.join(directory, `${artifactId}.json`);
-  await writeFile(filename, JSON.stringify(artifact), { flag: 'wx' });
+  await publishJson(filename, artifact);
   await appendEvent(id, { kind: 'artifact', artifactId, artifactKind: kind }, root);
   return { runId: id, artifactId, kind, path: filename };
 }
@@ -50,6 +58,7 @@ export async function snapshotFile(id, filename, root = historyRoot()) {
   const destination = path.join(directory, `${randomUUID()}${path.extname(filename)}`);
   await copyFile(filename, destination);
   const bytes = await readFile(destination);
+  if (bytes.length > 64 * 1024 * 1024) throw new Error('Copied report exceeds the 64 MiB import limit.');
   return { path: destination, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
 }
 export async function listRuns({ operation, limit = 30 } = {}, root = historyRoot()) {
@@ -132,11 +141,15 @@ export function compareHotspots(baselineRun, candidateRun, baseline, candidate, 
   const mismatches = [];
   if (baselineRun.operation !== candidateRun.operation) mismatches.push('operation');
   if (stable(baselineRun.context) !== stable(candidateRun.context)) mismatches.push('context');
-  for (const key of ['metric', 'unit', 'attribution', 'collector', 'scope']) if (baseline[key] !== candidate[key]) mismatches.push(key);
+  for (const key of ['metric', 'unit', 'valueSemantics', 'attribution', 'collector', 'scope']) if (baseline[key] !== candidate[key]) mismatches.push(key);
+  if (!baseline.valueSemantics || !candidate.valueSemantics) mismatches.push('missing valueSemantics; re-import the source report');
   if (stable(baseline.settings ?? {}) !== stable(candidate.settings ?? {})) mismatches.push('collection settings');
   if (mismatches.length) return { comparable: false, mismatches, rows: [] };
+  if (baseline.valueSemantics !== 'total' && !['total', 'none'].includes(normalization)) {
+    throw new Error('Rates, ratios and gauges must use normalization=none; only accumulated totals can be normalized by exposure.');
+  }
   const divisor = report => {
-    if (normalization === 'total') return 1;
+    if (normalization === 'total' || normalization === 'none') return 1;
     const value = normalization === 'perOperation' ? report.workUnits : report.durationMs / 1000;
     if (!(value > 0) || !Number.isFinite(value)) throw new Error(`Positive ${normalization === 'perOperation' ? 'workUnits' : 'durationMs'} is required.`);
     return value;
