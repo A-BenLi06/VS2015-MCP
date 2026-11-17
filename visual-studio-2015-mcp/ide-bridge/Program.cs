@@ -20,7 +20,8 @@ internal static class Program {
     static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 8388608, RecursionLimit = 64 };
     static readonly ConcurrentQueue<string> Input = new ConcurrentQueue<string>();
     static readonly Dictionary<string, Session> Sessions = new Dictionary<string, Session>();
-    static bool Ended, Busy;
+    static volatile bool Ended;
+    static bool Busy;
     static System.Windows.Forms.Timer Pump;
     static long Deadline;
     static int MaximumEvents = 1000;
@@ -51,6 +52,7 @@ internal static class Program {
                     Exception cause = error;
                     while (cause is System.Reflection.TargetInvocationException && cause.InnerException != null) cause = cause.InnerException;
                     string code = cause.Data.Contains("code") ? (string)cause.Data["code"] : cause is COMException ? "IDE_COM_ERROR" : "IDE_ERROR";
+                    if(cause is COMException && new[]{unchecked((int)0x800706BA),unchecked((int)0x80010108),unchecked((int)0x800401FD),unchecked((int)0x80010007),unchecked((int)0x80010012)}.Contains(cause.HResult))code="IDE_DISCONNECTED";
                     Write(Map("id",id,"error",Map("code",code,"message",cause.Message,"hresult",cause.HResult)));
                 } finally { Deadline = 0; Busy = false; }
             } else if (Ended) {
@@ -73,9 +75,10 @@ internal static class Program {
         if(operation=="attach") return Attach(r);
         string sid=Text(r,"sessionId");Session s;
         if(sid==null||!Sessions.TryGetValue(sid,out s))throw Error("SESSION_NOT_FOUND","Attach to a running VS2015 instance first.");
+        // Releasing automation resources must remain possible after the IDE exits.
+        if(operation=="detach"){s.Dispose();Sessions.Remove(sid);return Map("detached",true,"processId",s.ProcessId,"ideClosed",false,"cleanupWarnings",s.CleanupWarnings);}
         s.CheckIdentity();
         switch(operation) {
-            case "detach": s.Dispose();Sessions.Remove(sid);return Map("detached",true,"processId",s.ProcessId,"ideClosed",false,"cleanupWarnings",s.CleanupWarnings);
             case "solutionStatus": return SolutionStatus(s);
             case "openSolution": RequireDesign(s);if(s.Dte.Solution.IsOpen)throw Error("SOLUTION_ALREADY_OPEN","Close or choose another IDE before opening a different solution."); string solution=Path.GetFullPath(Text(r,"path"));if(!File.Exists(solution))throw Error("FILE_NOT_FOUND",solution);s.Dte.Solution.Open(solution);return SolutionStatus(s);
             case "buildActive": return StartBuild(s,r);

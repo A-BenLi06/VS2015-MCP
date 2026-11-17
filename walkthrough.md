@@ -163,3 +163,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T20:41:21+08:00 — 环境独立 CI
 新增GitHub Actions单元测试矩阵（Windows/Linux、Node22/24），锁定官方checkout/setup-node提交，工作流仅read权限。实机VS2015/Hyper-V测试继续本机显式运行，不在托管runner冒充通过。验证：本机npm test共32项通过；工作流已按官方动作参数配置，推送后检查实际运行。
 
+
+## 2026-11-17T20:44:44+08:00 — IDE关闭后的清理
+将detach移到PID存活检查前，确保IDE退出或RPC断开后仍能释放事件源与租约。常见RPC断连HRESULT单独返回IDE_DISCONNECTED；stdin读取线程结束标志使用volatile。验证：修改前后的完整自有IDE MCP流程通过，随后仅对已核实PID/启动时间/路径且无未保存文档的测试IDE执行Quit并清理；实测关闭阶段先出现RPC服务器断开，未误判成操作成功。更新桥接重新编译通过。用户原有3个IDE保持运行。CI四个Windows/Linux、Node22/24组合已全部通过。
+
