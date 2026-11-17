@@ -143,3 +143,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 
 ## 2026-11-17T20:08:28+08:00 — 对接 VS2015-MCP 远端并启用提交后自动推送
 保留原 origin 指向 MetroApp-developing-skill，新增 vs2015-mcp 远端。因远端 main 是独立初始提交，与本地历史无共同祖先，在 codex/vs2015-mcp 分支发布现有项目历史，避免覆盖远端 main。AGENTS.md 现在要求每次提交后推送当前分支上游，首次发布分支时设置 upstream，并禁止 force-push。验证：已读取远端 main 并确认两侧无共同祖先；本次提交推送后将确认上游及工作区状态。
+
+## 2026-11-17T20:28:04+08:00 — 修复审查 A：嵌套比较丢字段
+确认JSON.stringify属性白名单会遗漏嵌套context/settings，改为共享递归规范化，保留数组顺序，并让热点与进程比较使用同一逻辑。新增ARM/x86嵌套差异、数组顺序、空值及属性重排回归。验证11项历史/进程比较测试通过。
+

@@ -1,9 +1,9 @@
 import { mkdir, writeFile, readFile, readdir, stat, copyFile, rename } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
+import { stableJson as stable } from './canonical.mjs';
 
 const idPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
-const stable = value => JSON.stringify(value, Object.keys(value ?? {}).sort());
 export const historyRoot = () => path.resolve(process.env.VS2015_MCP_HISTORY || '.vs2015-mcp/runs');
 export function runDirectory(id, root = historyRoot()) {
   if (!idPattern.test(id)) throw new Error('Invalid history run ID.');

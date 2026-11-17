@@ -1,12 +1,9 @@
+import { stableJson } from './canonical.mjs';
+
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const finite = value => Number.isFinite(value) && value >= 0;
 const positive = value => Number.isFinite(value) && value > 0;
-const canonical = value => {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (object(value)) return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
-  return value;
-};
-const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+const same = (a, b) => stableJson(a) === stableJson(b);
 
 /**
  * Each side: {run, summary, collector, settings, evidenceVerified, action?}.

@@ -46,3 +46,19 @@ test('comparisons normalize exposure and reject incompatible measurements', () =
   const repeated = { ...ratio, hotspots: [...ratio.hotspots, ...ratio.hotspots] };
   assert.throws(() => compareHotspots(run, run, repeated, repeated, { normalization: 'none' }), /Duplicate/);
 });
+
+test('nested context/settings and ordered arrays survive canonical comparison', () => {
+  const run = { operation: 'build', context: { config: { platform: 'ARM', flags: ['a', 'b'] }, empty: null } };
+  const report = { metric: 'cpu', unit: 'samples', valueSemantics: 'total', attribution: 'exclusive', collector: 'fixture', scope: 'process',
+    settings: { events: [{ provider: 'CLR', keywords: [1, 2] }], config: { interval: 1 } }, durationMs: 1000, complete: true,
+    hotspots: [{ symbol: 'A', module: 'm', value: 1 }] };
+  const reordered = { operation: 'build', context: { empty: null, config: { flags: ['a', 'b'], platform: 'ARM' } } };
+  const reorderedReport = { ...report, settings: { config: { interval: 1 }, events: [{ keywords: [1, 2], provider: 'CLR' }] } };
+  assert.equal(compareHotspots(run, reordered, report, reorderedReport).comparable, true);
+  for (const change of [candidate => candidate.context.config.platform = 'x86', candidate => candidate.context.config.flags.reverse()]) {
+    const candidate = structuredClone(run); change(candidate);
+    assert.deepEqual(compareHotspots(run, candidate, report, report).mismatches, ['context']);
+  }
+  const candidate = structuredClone(report); candidate.settings.events[0].keywords.reverse();
+  assert.deepEqual(compareHotspots(run, run, report, candidate).mismatches, ['collection settings']);
+});
