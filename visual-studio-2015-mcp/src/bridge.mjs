@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { writeFileSync } from 'node:fs';
 
 const scripts = fileURLToPath(new URL('../scripts/', import.meta.url));
 const active = new Set();
@@ -15,10 +16,13 @@ function terminate(child) {
 }
 
 export function stopChildren() {
-  for (const child of active) terminate(child);
+  const pending = [...active];
+  for (const record of pending) record.stop(new Error('Server disconnected; stopping the tool.'));
+  return Promise.allSettled(pending.map(record => record.closed));
 }
 
-export function invokeBackend(request, { signal, script = 'Invoke-Vs2015.ps1', desktopX86 = false } = {}) {
+export function invokeBackend(request, { signal, script = 'Invoke-Vs2015.ps1', desktopX86 = false,
+  cooperativeStopFile, cleanupGraceMs = 45000, preserveBackendErrors = false } = {}) {
   if (process.platform !== 'win32') throw new Error('This server requires Windows and PowerShell 7.');
   signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
@@ -26,11 +30,22 @@ export function invokeBackend(request, { signal, script = 'Invoke-Vs2015.ps1', d
       ? path.join(process.env.SystemRoot || 'C:\\Windows', 'SysWOW64', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
       : process.env.VS2015_MCP_PWSH || 'pwsh.exe';
     const child = spawn(executable,
-      ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(scripts, script)],
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve(scripts, script)],
       { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-    active.add(child);
-    let stdout = '', stderr = '', failure;
-    const fail = error => { failure ??= error; terminate(child); };
+    let closed;
+    const record = { closed: new Promise(resolve => { closed = resolve; }), stop: null };
+    active.add(record);
+    let stdout = '', stderr = '', failure, cleanupTimer;
+    const fail = error => {
+      if (failure) return;
+      failure = error;
+      if (cooperativeStopFile) {
+        try { writeFileSync(cooperativeStopFile, new Date().toISOString(), { flag: 'wx' }); }
+        catch (writeError) { if (writeError.code !== 'EEXIST') failure.message += ` Stop marker failed: ${writeError.message}`; }
+        cleanupTimer = setTimeout(() => terminate(child), cleanupGraceMs);
+      } else terminate(child);
+    };
+    record.stop = fail;
     const abort = () => fail(new Error('Request cancelled; stopping the tool process tree.'));
     const timer = setTimeout(() => fail(new Error('PowerShell bridge exceeded its deadline.')),
       (request.timeoutMs ?? 120000) + (request.setupTimeoutMs ?? 60000) + 30000);
@@ -48,12 +63,22 @@ export function invokeBackend(request, { signal, script = 'Invoke-Vs2015.ps1', d
     child.on('error', error => { failure = error; });
     child.on('close', code => {
       clearTimeout(timer);
+      clearTimeout(cleanupTimer);
       signal?.removeEventListener('abort', abort);
-      active.delete(child);
-      if (failure) return reject(failure);
+      active.delete(record);
+      closed();
+      if (failure) {
+        try { failure.backendResult = JSON.parse(stdout.replace(/^\uFEFF/, '')); } catch { /* hard termination may have no result */ }
+        return reject(failure);
+      }
       try {
         const result = JSON.parse(stdout.replace(/^\uFEFF/, ''));
-        if (result.error) return reject(new Error(`${result.error.code}: ${result.error.message}`));
+        if (result.error && preserveBackendErrors) return resolve(result);
+        if (result.error) {
+          const error = new Error(`${result.error.code}: ${result.error.message}`);
+          error.backendResult = result;
+          return reject(error);
+        }
         if (code !== 0) return reject(new Error(`PowerShell exited ${code}: ${stderr}`));
         resolve(result);
       } catch (error) {

@@ -32,5 +32,5 @@ serveStdio(() => {
   return server;
 });
 process.stdin.on('end', stopChildren);
-for (const event of ['SIGINT', 'SIGTERM']) process.on(event, () => { stopChildren(); process.exit(0); });
+for (const event of ['SIGINT', 'SIGTERM']) process.on(event, async () => { await stopChildren(); process.exit(0); });
 process.on('exit', stopChildren);
