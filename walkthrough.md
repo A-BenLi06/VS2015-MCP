@@ -124,3 +124,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T18:29:54+08:00 — PerfView 真正离线报告闭环
 使用微软 PerfView v4.0.0 仓库的 net.4.5.2.x64.etl.zip（Git blob SHA1 a81addc5158e6f2e643f2b393c1eb7ff5582de31）实测，发现ZIP输入的GCStats写入PerfView全局缓存，原封装找不到产物；修为先由既有安全提取器生成独立ETL，再NoGui/NoView分析。合并冗余目录并使用短文件名，为旧Framework分析器保留MAX_PATH报告后缀空间，超长路径明确拒绝。提取器新增内部JSON参数/管道返回，保持stdio单一JSON协议。验证：真实GC HTML/CSV、CPU CSV生成，实际函数数据经MCP导入历史并自对照为零差异；新增可选runtime集成与归档回归共2项通过。未启动ETW采集。
 
+
+## 2026-11-17T18:30:56+08:00 — 独立用户目录中的官方 CDB
+加入已验证版本的 Windows Debugger 获取脚本：从微软官方 MSIX bundle 用固定ETag/HTTP Range读取ZIP目录及x64最小依赖，限制下载量/展开大小、验证CRC与全部PE微软签名后发布；不运行installer、不修改PATH、不提权。固定包版本1.2611.4001.0用于可复现兼容性，不代表自动追随latest。实测仅下载14,352,637字节，20个PE签名Valid，CDB -version退出0（10.0.29680.1004）。实际自建Framework x64进程已生成完整dump并取得SOS类型堆数据；fixture全部清理。脚本PS/Node语法检查通过。
+
