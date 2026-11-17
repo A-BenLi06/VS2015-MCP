@@ -1,6 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 
 export async function readJsonLines(filename) {
+  if ((await stat(filename)).size > 128 * 1024 * 1024) throw new Error('JSONL capture exceeds the 128 MiB analysis limit.');
   const text = await readFile(filename, 'utf8');
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
   const events = [], warnings = [];
