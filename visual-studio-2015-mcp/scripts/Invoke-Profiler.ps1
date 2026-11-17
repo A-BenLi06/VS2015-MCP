@@ -244,9 +244,19 @@ try {
             if($analysis -ne 'gcStats' -and [string]::IsNullOrWhiteSpace($processName)){Fail 'INVALID_REQUEST' 'CPU exports require processName; the last matching process instance is selected by PerfView.'}
             $parent=Resolve-FullPath (Read-Text $request 'outputDirectory' ([IO.Path]::GetTempPath()))
             $runDirectory=Join-Path $parent ('vs2015-offline-'+[Guid]::NewGuid().ToString('N'))
-            $inputCopy=Join-Path $runDirectory ([IO.Path]::GetFileName($inputPath))
+            $inputCopy=Join-Path $runDirectory 'trace.etl'
+            $extraction=$null
+            if($inputPath.EndsWith('.etl.zip',[StringComparison]::OrdinalIgnoreCase)) {
+                $extractRequest=@{operation='extract';inputPath=$inputPath;outputDirectory=$parent;dryRun=$dryRun;maxBytes=(Read-Int $request 'maxTraceBytes' 1073741824 1 4294967296)}
+                if($request.ContainsKey('entryName')){$extractRequest.entryName=Read-Text $request 'entryName'}
+                $extraction = (& (Join-Path $PSScriptRoot 'Extract-ProfileTrace.ps1') -RequestJson ($extractRequest|ConvertTo-Json -Compress)) | ConvertFrom-Json -AsHashtable
+                if($extraction.ContainsKey('error')){Fail 'TRACE_EXTRACTION_FAILED' ($extraction.error.message+' Available ETL entries: '+((Get-Value $extraction 'etlEntries' @()) -join ', '))}
+                $inputCopy=$extraction.path
+                $runDirectory=$extraction.outputDirectory
+            }
+            if($inputCopy.Length -gt 220){Fail 'ANALYSIS_PATH_TOO_LONG' 'The legacy analyzer needs room for report suffixes within MAX_PATH. Use a shorter VS2015_MCP_HISTORY directory.'}
             $args=[Collections.Generic.List[string]]::new()
-            $args.Add('/AcceptEULA');$args.Add('/LogFile:'+(Join-Path $runDirectory 'analysis.log'));$args.Add('/NoView');$args.Add('UserCommand')
+            $args.Add('/AcceptEULA');$args.Add('/LogFile:'+(Join-Path $runDirectory 'analysis.log'));$args.Add('/NoGui');$args.Add('/NoView');$args.Add('UserCommand')
             $notes=[Collections.Generic.List[string]]::new()
             $notes.Add('The source trace is copied into a unique output directory before analysis; the source directory is not used for generated reports or ETLX files.')
             switch($analysis){
@@ -256,10 +266,10 @@ try {
             }
             if($analysis -ne 'gcStats'){$notes.Add('CPU selection uses the last matching process name, not PID plus start time. Same-name instances require explicit review before attributing results to a selected live process.')}
             $plan=New-Plan $tool @($args) $timeout
-            $result=[ordered]@{operation=$operation;dryRun=$dryRun;analysis=$analysis;inputPath=$inputPath;inputCopy=$inputCopy;outputDirectory=$runDirectory;plan=$plan;notes=@($notes);collectorVersion=$tool.version}
+            $result=[ordered]@{operation=$operation;dryRun=$dryRun;analysis=$analysis;inputPath=$inputPath;inputCopy=$inputCopy;extraction=$extraction;outputDirectory=$runDirectory;plan=$plan;notes=@($notes);collectorVersion=$tool.version}
             if(-not $dryRun){
                 $null=[IO.Directory]::CreateDirectory($runDirectory)
-                [IO.File]::Copy($inputPath,$inputCopy,$false)
+                if($null -eq $extraction){[IO.File]::Copy($inputPath,$inputCopy,$false)}
                 $result['execution']=Invoke-Plan $plan
                 $result['exitCode']=$result.execution.exitCode;$result['timedOut']=$result.execution.timedOut
                 $result['files']=@(Get-ChildItem -LiteralPath $runDirectory -Recurse -File | Select-Object @{n='path';e={$_.FullName}},Length)

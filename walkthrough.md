@@ -120,3 +120,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T18:16:33+08:00 — 本机优先与可复现 PerfView 准备
 用户确认本机进程和 WP8.1/Win10M 都需要，先推进本机实际验证。新增显式版本的官方 PerfView 获取脚本：校验 GitHub release SHA-256、文件大小与 Microsoft Authenticode，仅发布到独立用户目录，不修改 PATH/注册表/客户端。实测取得 4.0.0，hash=270e2ba419b0b2d93c4b15b0851f257edf655c92fe0ad95add3d0b5f6d6aad48，签名 Valid；供后续离线报告验证。
 
+
+## 2026-11-17T18:29:54+08:00 — PerfView 真正离线报告闭环
+使用微软 PerfView v4.0.0 仓库的 net.4.5.2.x64.etl.zip（Git blob SHA1 a81addc5158e6f2e643f2b393c1eb7ff5582de31）实测，发现ZIP输入的GCStats写入PerfView全局缓存，原封装找不到产物；修为先由既有安全提取器生成独立ETL，再NoGui/NoView分析。合并冗余目录并使用短文件名，为旧Framework分析器保留MAX_PATH报告后缀空间，超长路径明确拒绝。提取器新增内部JSON参数/管道返回，保持stdio单一JSON协议。验证：真实GC HTML/CSV、CPU CSV生成，实际函数数据经MCP导入历史并自对照为零差异；新增可选runtime集成与归档回归共2项通过。未启动ETW采集。
+

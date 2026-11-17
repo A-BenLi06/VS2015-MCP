@@ -1,6 +1,8 @@
 #requires -Version 7.0
+param([string]$RequestJson)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:ReturnToPipeline = $PSBoundParameters.ContainsKey('RequestJson')
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
@@ -9,7 +11,10 @@ function Get-FullFileSystemPath([object]$Value, [string]$Label) {
     if (-not [IO.Path]::IsPathFullyQualified($Value)) { throw "$Label must be a fully qualified filesystem path." }
     return [IO.Path]::GetFullPath($Value)
 }
-function Write-Result([object]$Value) { [Console]::Out.WriteLine(($Value | ConvertTo-Json -Depth 12 -Compress)) }
+function Write-Result([object]$Value) {
+    $json = $Value | ConvertTo-Json -Depth 12 -Compress
+    if ($script:ReturnToPipeline) { Write-Output $json } else { [Console]::Out.WriteLine($json) }
+}
 $archive = $null
 $sourceStream = $null
 $entryStream = $null
@@ -19,7 +24,8 @@ $outputFile = $null
 $success = $false
 $result = [ordered]@{}
 try {
-    $request = [Console]::In.ReadToEnd() | ConvertFrom-Json -AsHashtable
+    $json = if ($PSBoundParameters.ContainsKey('RequestJson')) { $RequestJson } else { [Console]::In.ReadToEnd() }
+    $request = $json | ConvertFrom-Json -AsHashtable
     if ($request -isnot [Collections.IDictionary]) { throw 'A JSON object is required.' }
     if ($request.ContainsKey('operation') -and $request.operation -cne 'extract') { throw 'operation must be extract.' }
     $dryRun = $true
@@ -66,7 +72,7 @@ try {
     if ($selected.Length -gt $maxBytes) { throw "Selected entry exceeds maxBytes ($maxBytes)." }
     $outRoot = if ($request.ContainsKey('outputDirectory')) { Get-FullFileSystemPath $request.outputDirectory 'outputDirectory' } else { [IO.Path]::GetTempPath() }
     $runDirectory = Join-Path $outRoot ('profile-trace-' + [guid]::NewGuid().ToString('N'))
-    $plannedFile = Join-Path $runDirectory ('trace-' + [guid]::NewGuid().ToString('N') + '.etl')
+    $plannedFile = Join-Path $runDirectory 'trace.etl'
     $result.outputDirectory = $runDirectory
     $result.path = $plannedFile
     if (-not $dryRun) {
