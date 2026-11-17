@@ -9,6 +9,8 @@ import { observabilityDefinitions, recordingTool } from './observability.mjs';
 import { diagnosticDefinitions } from './diagnostics.mjs';
 import { debugDefinitions } from './debug.mjs';
 import { profilerDefinitions } from './profiler.mjs';
+import { ideDefinitions } from './ide.mjs';
+import { stopIdeBridge } from './ide-client.mjs';
 
 serveStdio(() => {
   const server = new McpServer({ name: 'visual-studio-2015', version: '0.2.1' });
@@ -17,7 +19,7 @@ serveStdio(() => {
       contents: [{ uri: uri.href, mimeType: 'text/markdown', text: await readFile(new URL(`../docs/${name}.md`, import.meta.url), 'utf8') }],
     }));
   }
-  const catalog = [...definitions, ...phoneDefinitions, ...observabilityDefinitions, ...diagnosticDefinitions, ...debugDefinitions, ...profilerDefinitions];
+  const catalog = [...definitions, ...phoneDefinitions, ...observabilityDefinitions, ...diagnosticDefinitions, ...debugDefinitions, ...profilerDefinitions, ...ideDefinitions];
   for (const tool of [...catalog, recordingTool(catalog)]) {
     server.registerTool(tool.name, {
       description: tool.description, inputSchema: tool.schema,
@@ -32,6 +34,7 @@ serveStdio(() => {
   }
   return server;
 });
-process.stdin.on('end', stopChildren);
-for (const event of ['SIGINT', 'SIGTERM']) process.on(event, async () => { await stopChildren(); process.exit(0); });
-process.on('exit', stopChildren);
+const stop = () => Promise.allSettled([stopChildren(), stopIdeBridge()]);
+process.stdin.on('end', stop);
+for (const event of ['SIGINT', 'SIGTERM']) process.on(event, async () => { await stop(); process.exit(0); });
+process.on('exit', stop);
