@@ -132,3 +132,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T18:34:20+08:00 — 真实 CDB 快照与堆诊断兼容性
 实测当前CDB遇非侵入-pvr与-pd组合会在访问目标前退出且exit=0。按非侵入会话不建立debug port的语义，仅snapshot移除冗余-pd，保留-pvr/qd；不把此改动作为侵入式附加的降级路径。缺完成标记现在返回DEBUG_REPORT_INCOMPLETE，即使原生exit为0。增加VS2015_MCP_DEBUGGER_ROOT显式路径配置。验证：新建Framework x64 fixture通过真实MCP取得托管栈，目标保持存活并在测试finally清理；真实120MB自有dump通过MCP取得System.Byte[]与SOS堆表。补充zero-exit回归通过。系统符号不完整，未把!analyze根因判断计作已验证。
 
+
+## 2026-11-17T18:34:53+08:00 — 固定调试器提取边界
+审查便携CDB获取器时进一步限制动态扩展DLL名称为普通文件名字符，并在每次写入前验证解析后的绝对路径仍位于本次暂存目录；不依赖上游ZIP条目名称可信。Node语法检查通过；不重新下载或替换已经验签的工具。
+
