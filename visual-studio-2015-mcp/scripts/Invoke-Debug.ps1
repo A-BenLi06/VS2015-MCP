@@ -182,7 +182,9 @@ function Invoke-DebugRequest($Request) {
         if ($processId -isnot [ValueType] -or $processId -lt 1 -or $processId -gt [int]::MaxValue -or [math]::Floor($processId) -ne $processId) { throw 'processId must be a positive integer.' }
         $targetProcess = [Diagnostics.Process]::GetProcessById([int]$processId)
         $targetProcess.Dispose()
-        foreach ($part in @('-pvr', '-pd', '-p', [string]$processId)) { $nativeArguments.Add($part) }
+        # Noninvasive -pvr does not acquire a debug port. Detach-on-exit is
+        # unnecessary here and current CDB rejects -pd before target access.
+        foreach ($part in @('-pvr', '-p', [string]$processId)) { $nativeArguments.Add($part) }
         foreach ($command in @('~* kb', 'lm', '!runaway')) { $commands.Add($command) }
     } else {
         $target = Resolve-File (Get-Value $Request 'executable') $directory 'executable'

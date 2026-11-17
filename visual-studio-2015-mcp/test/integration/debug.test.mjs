@@ -14,7 +14,7 @@ test('real debugger inventory, safe plans and missing CDB result', { skip: proce
     const inventory = await call('vs2015_debug_discover', {});
     assert.equal(inventory.capabilities.interactiveStepping, false);
     const snapshot = await call('vs2015_debug_snapshot', { processId: process.pid, architecture: 'x64', managedRuntime: 'clr', dryRun: true });
-    assert.ok(snapshot.arguments.includes('-pvr')); assert.ok(snapshot.arguments.includes('-pd'));
+    assert.ok(snapshot.arguments.includes('-pvr')); assert.equal(snapshot.arguments.includes('-pd'), false);
     assert.equal(snapshot.commands.at(-1), 'qd'); assert.ok(snapshot.commands.includes('.loadby sos clr'));
     const dumpPath = path.join(directory, 'placeholder.dmp');
     await writeFile(dumpPath, 'dry-run placeholder; never opened by CDB');

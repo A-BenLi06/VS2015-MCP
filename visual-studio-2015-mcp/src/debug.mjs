@@ -11,15 +11,22 @@ const common = { ...roots, architecture: z.enum(['x86', 'x64']).describe('Match 
   encoding: text.optional(), dryRun: z.boolean().default(false), runId: z.guid().optional() };
 
 async function run(operation, input, ctx) {
-  const request = { ...input, operation, vsRoot: input.vsRoot ?? process.env.VS2015_MCP_ROOT };
+  const request = { ...input, operation, vsRoot: input.vsRoot ?? process.env.VS2015_MCP_ROOT,
+    debuggerRoot: input.debuggerRoot ?? process.env.VS2015_MCP_DEBUGGER_ROOT };
   if (input.dryRun || operation === 'discover') return invokeBackend(request, { ...ctx, script: 'Invoke-Debug.ps1' });
   const history = input.runId ? await readRun(input.runId) : await createRun({ operation: `debug:${operation}` });
   try {
-    const result = await invokeBackend(request, { ...ctx, script: 'Invoke-Debug.ps1' });
+    const result = classifyDebugResult(await invokeBackend(request, { ...ctx, script: 'Invoke-Debug.ps1' }));
     return { ...result, ...await saveArtifact(history.id, 'debug-transcript', { operation, result }) };
   } catch (error) {
     return { error: { message: error.message }, ...await saveArtifact(history.id, 'debug-transcript', { operation, error: error.message }) };
   }
+}
+export function classifyDebugResult(result) {
+  if (result.reportCompletion && result.reportCompletion !== 'completed' && !result.error) {
+    return { ...result, error: { code: 'DEBUG_REPORT_INCOMPLETE', message: `Debugger transcript is ${result.reportCompletion}; a zero exit code alone does not confirm diagnostics.` } };
+  }
+  return result;
 }
 export const debugDefinitions = [
   { name: 'vs2015_debug_discover', readOnly: true, description: 'Discover actual VS2015/CDB/WinDbg/MDbg binaries and architectures. Report missing CLI debugging support separately from interactive VS entry points.',

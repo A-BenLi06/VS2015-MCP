@@ -128,3 +128,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T18:30:56+08:00 — 独立用户目录中的官方 CDB
 加入已验证版本的 Windows Debugger 获取脚本：从微软官方 MSIX bundle 用固定ETag/HTTP Range读取ZIP目录及x64最小依赖，限制下载量/展开大小、验证CRC与全部PE微软签名后发布；不运行installer、不修改PATH、不提权。固定包版本1.2611.4001.0用于可复现兼容性，不代表自动追随latest。实测仅下载14,352,637字节，20个PE签名Valid，CDB -version退出0（10.0.29680.1004）。实际自建Framework x64进程已生成完整dump并取得SOS类型堆数据；fixture全部清理。脚本PS/Node语法检查通过。
 
+
+## 2026-11-17T18:34:20+08:00 — 真实 CDB 快照与堆诊断兼容性
+实测当前CDB遇非侵入-pvr与-pd组合会在访问目标前退出且exit=0。按非侵入会话不建立debug port的语义，仅snapshot移除冗余-pd，保留-pvr/qd；不把此改动作为侵入式附加的降级路径。缺完成标记现在返回DEBUG_REPORT_INCOMPLETE，即使原生exit为0。增加VS2015_MCP_DEBUGGER_ROOT显式路径配置。验证：新建Framework x64 fixture通过真实MCP取得托管栈，目标保持存活并在测试finally清理；真实120MB自有dump通过MCP取得System.Byte[]与SOS堆表。补充zero-exit回归通过。系统符号不完整，未把!analyze根因判断计作已验证。
+
