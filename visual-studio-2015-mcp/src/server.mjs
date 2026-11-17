@@ -6,6 +6,7 @@ import { stopChildren } from './bridge.mjs';
 import { phoneDefinitions } from './phone.mjs';
 import { readFile } from 'node:fs/promises';
 import { observabilityDefinitions, recordingTool } from './observability.mjs';
+import { diagnosticDefinitions } from './diagnostics.mjs';
 
 serveStdio(() => {
   const server = new McpServer({ name: 'visual-studio-2015', version: '0.1.0' });
@@ -14,7 +15,7 @@ serveStdio(() => {
       contents: [{ uri: uri.href, mimeType: 'text/markdown', text: await readFile(new URL(`../docs/${name}.md`, import.meta.url), 'utf8') }],
     }));
   }
-  const catalog = [...definitions, ...phoneDefinitions, ...observabilityDefinitions];
+  const catalog = [...definitions, ...phoneDefinitions, ...observabilityDefinitions, ...diagnosticDefinitions];
   for (const tool of [...catalog, recordingTool(catalog)]) {
     server.registerTool(tool.name, {
       description: tool.description, inputSchema: tool.schema,
