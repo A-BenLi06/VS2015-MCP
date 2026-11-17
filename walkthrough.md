@@ -96,3 +96,7 @@ Added an opt-in stop-file grace period to the PowerShell bridge so profilers can
 ## 2026-11-17T16:59:58+08:00 — Historical diagnostic evidence
 Build logs now use copied SHA-256 snapshots for re-reading and return explicit incomplete diagnostics on changed evidence. Interrupted builds retain artifact references; a generic history artifact reader makes saved debugger/profiler results accessible. Validation: real MSBuild MCP diagnostics integration passed, including deliberate snapshot tampering detected with unknown counts rather than false zero errors.
 
+
+## 2026-11-17T17:08:36+08:00 — VS2015 profiler CLI and trace pipeline
+Added Performance Tools discovery/help/status, bounded VSPerf CPU attach/detach with ownership checks and cooperative cancellation, VSPerfReport CSV/XML export and fixed offline PerfView CPU/GC reports. PerfView live collection is excluded because its internal failure cleanup can stop unrelated sessions. VSPX/ETL.zip extraction enumerates actual entries and streams only a selected ETL to a unique path with byte bounds. Distinct trace and artifact paths avoid overwriting return references. Validation: real profiler inventory/help, dry-run filters/capture, non-admin refusal and unsupported-command tests passed; archive multi-entry/size/traversal regressions passed. Real elevated ETW capture, detach and PerfView analysis remain unverified; CDB/PerfView were not installed and no live ETW sessions were started.
+
