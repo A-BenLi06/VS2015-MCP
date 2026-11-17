@@ -92,3 +92,7 @@ Added debugger inventory, CDB dump/non-suspending live snapshot/initial-loader s
 ## 2026-11-17T16:58:17+08:00 — Cooperative profiler cancellation
 Added an opt-in stop-file grace period to the PowerShell bridge so profilers can detach and publish recovery state before forced termination. Cancellation keeps backend cleanup evidence; SIGINT/SIGTERM await owned children. Existing build tools retain immediate process-tree cleanup. Validation: cooperative abort/disconnect fixture passed, and real MSBuild MCP cancellation plus stdin EOF both passed with no remaining owned PIDs.
 
+
+## 2026-11-17T16:59:58+08:00 — Historical diagnostic evidence
+Build logs now use copied SHA-256 snapshots for re-reading and return explicit incomplete diagnostics on changed evidence. Interrupted builds retain artifact references; a generic history artifact reader makes saved debugger/profiler results accessible. Validation: real MSBuild MCP diagnostics integration passed, including deliberate snapshot tampering detected with unknown counts rather than false zero errors.
+

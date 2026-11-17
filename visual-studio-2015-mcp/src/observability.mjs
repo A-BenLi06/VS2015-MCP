@@ -19,6 +19,8 @@ export const observabilityDefinitions = [
     schema: z.object({ operation: text.optional(), limit: z.number().int().min(1).max(200).default(30) }), run: async input => ({ runs: await listRuns(input) }) },
   { name: 'vs2015_history_read', readOnly: true, description: 'Read a run and its action/measurement timeline. Artifacts are separate immutable JSON files.',
     schema: z.object({ runId: id }), run: input => timeline(input.runId) },
+  { name: 'vs2015_history_artifact', readOnly: true, description: 'Read a recorded artifact, including bounded debugger transcripts, profiler command results and measurement metadata, by run/artifact IDs.',
+    schema: z.object(artifactRef), run: input => readArtifact(input.runId, input.artifactId) },
   { name: 'vs2015_profile_sample', description: 'Read CPU time, private/working-set memory and optional .NET Framework GC counters for one existing local PID. Does not suspend the target. Record a complete or explicitly partial JSONL trace in the run. These are process trends, not function hotspots.',
     schema: z.object({ runId: id, processId: z.number().int().positive(), durationMs: z.number().int().min(1000).max(300000).default(10000),
       intervalMs: z.number().int().min(250).max(30000).default(1000), includeClr: z.boolean().default(true) }),

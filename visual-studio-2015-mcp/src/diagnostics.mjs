@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { definitions, planMsbuild } from './tools.mjs';
 import { invokeBackend } from './bridge.mjs';
-import { createRun, readRun, runDirectory, saveArtifact, readArtifact } from './history.mjs';
+import { createRun, readRun, runDirectory, saveArtifact, readArtifact, snapshotFile } from './history.mjs';
 import { readJsonLines } from './samples.mjs';
 
 const compiled = new Map();
@@ -39,8 +39,8 @@ export function summarizeDiagnostics(events, parseWarnings = [], { severity, cod
       .sort((a, b) => b.durationMs - a.durationMs).slice(0, 20),
     warnings, timingNote: 'Target elapsed times may overlap across projects/nodes; they are not CPU time and must not be summed as build duration.' };
 }
-async function readDiagnostics(filename, options) {
-  try { const { events, warnings } = await readJsonLines(filename); return summarizeDiagnostics(events, warnings, options); }
+async function readDiagnostics(filename, options, expectedSha256) {
+  try { const { events, warnings } = await readJsonLines(filename, { expectedSha256 }); return summarizeDiagnostics(events, warnings, options); }
   catch (error) { return summarizeDiagnostics([], [`Cannot read diagnostic log: ${error.message}`], options); }
 }
 
@@ -62,11 +62,16 @@ export const diagnosticDefinitions = [
       let execution;
       try { execution = await invokeBackend(plan, ctx); }
       catch (error) {
-        await saveArtifact(run.id, 'build-diagnostics', { logPath, executionError: error.message, diagnostics: await readDiagnostics(logPath) });
-        throw error;
+        let source;
+        try { source = await snapshotFile(run.id, logPath); } catch { /* startup may have produced no log */ }
+        const artifact = await saveArtifact(run.id, 'build-diagnostics', { logPath: source?.path ?? logPath, source,
+          executionError: error.message, diagnostics: await readDiagnostics(source?.path ?? logPath, undefined, source?.sha256) });
+        return { ...artifact, error: { message: error.message } };
       }
-      const diagnostics = await readDiagnostics(logPath);
-      const artifact = await saveArtifact(run.id, 'build-diagnostics', { logPath, execution, diagnostics });
+      let source, snapshotError;
+      try { source = await snapshotFile(run.id, logPath); } catch (error) { snapshotError = error.message; }
+      const diagnostics = source ? await readDiagnostics(source.path, undefined, source.sha256) : summarizeDiagnostics([], [snapshotError]);
+      const artifact = await saveArtifact(run.id, 'build-diagnostics', { logPath: source?.path ?? logPath, source, execution, diagnostics });
       return { ...execution, ...artifact, diagnostics,
         ...(!diagnostics.complete ? { error: { code: 'DIAGNOSTICS_INCOMPLETE', message: 'The build process returned, but a complete diagnostic log was not captured.' } } : {}) };
     } },
@@ -76,6 +81,8 @@ export const diagnosticDefinitions = [
     run: async input => {
       const artifact = await readArtifact(input.runId, input.artifactId);
       if (artifact.kind !== 'build-diagnostics') throw new Error('Expected a build-diagnostics artifact.');
-      return { runId: input.runId, artifactId: input.artifactId, ...await readDiagnostics(artifact.data.logPath, input) };
+      const summary = await readDiagnostics(artifact.data.logPath, input, artifact.data.source?.sha256);
+      if (artifact.data.executionError) { summary.complete = false; summary.warnings.push(artifact.data.executionError); }
+      return { runId: input.runId, artifactId: input.artifactId, ...summary };
     } },
 ];

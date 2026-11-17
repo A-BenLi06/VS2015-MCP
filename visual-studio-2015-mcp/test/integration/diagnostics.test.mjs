@@ -26,5 +26,11 @@ test('MSBuild14 ILogger diagnostics flow through MCP and history', { skip: proce
     assert.equal(filtered.structuredContent.diagnostics.length, 1);
     assert.equal(filtered.structuredContent.diagnostics[0].code, 'E456');
     assert.equal(filtered.structuredContent.warningCount, 1);
+    const stored = await client.callTool({ name: 'vs2015_history_artifact', arguments: { runId: data.runId, artifactId: data.artifactId } });
+    await writeFile(stored.structuredContent.data.source.path, '{}');
+    const changed = await client.callTool({ name: 'vs2015_diagnostics_read', arguments: { runId: data.runId, artifactId: data.artifactId } });
+    assert.equal(changed.structuredContent.complete, false);
+    assert.equal(changed.structuredContent.errorCount, null);
+    assert.match(changed.structuredContent.warnings.join(' '), /hash changed/);
   } finally { await client.close(); await rm(directory, { recursive: true, force: true }); }
 });
