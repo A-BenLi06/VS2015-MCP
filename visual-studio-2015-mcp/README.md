@@ -2,6 +2,8 @@
 
 面向 Windows 的本地 stdio MCP 服务，提供 VS2015 构建、测试、SDK CLI、编译诊断、调试、性能采样与历史比较，以及 Windows Phone 8.1 / Windows 10 Mobile 模拟器操控。
 
+**v0.3.0 — IDE Automation** 新增持久 STA／EnvDTE 桥接：连接指定运行实例，读取真实解决方案和未保存文档，按事件等待 IDE 构建，设置断点、运行、单步并读取变量。现有 45 项工具保留，共 65 项工具。详见 [IDE 指南](docs/ide-guide.md) 和[源码审查跟进](docs/review-followup.md)。
+
 协议层使用官方 MCP SDK；原生命令由 PowerShell 7 执行。XDE 的 x86 .NET Framework 程序集通过独立的 32 位 Windows PowerShell 5.1 进程调用。无需 VS 扩展，不下载 SDK、镜像或模型，也不调用 AI API。
 
 ## 安装与接入
@@ -29,6 +31,7 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 | `VS2015_MCP_LOGGER_CACHE` | MSBuild 诊断 Logger 缓存的父目录 |
 | `VS2015_MCP_PERFVIEW` | 可选的本机 PerfView.exe 路径，仅用于离线报告 |
 | `VS2015_MCP_DEBUGGER_ROOT` | CDB 所在目录或 Windows Debuggers 根目录 |
+| `VS2015_MCP_IDE_BRIDGE` | 可选的已编译 IDE 桥接 EXE；省略时用本机 Framework／VS interop 编译 |
 
 可选工具可独立取得：`scripts/Get-PerfView.ps1 -Version 4.0.0` 校验官方 release 哈希和微软签名；`scripts/Get-WindowsDebugger.ps1` 按需提取已验证版本的微软 x64 CDB。两者只写独立用户目录，不修改 PATH。将返回路径传给 `Print-McpConfig.ps1 -PerfViewPath <exe> -DebuggerRoot <目录>`，也可加 `-HistoryRoot <目录>`。配置脚本仍只输出配置。
 
@@ -38,6 +41,13 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 
 | 工具 | 用途 |
 |---|---|
+| `vs2015_instances` / `vs2015_attach` / `vs2015_detach` | 运行中 IDE 发现、指定身份连接、释放自动化会话 |
+| `vs2015_solution_status` / `vs2015_open_solution` | IDE 中真实解决方案、活动配置／平台；在空 IDE 打开解决方案 |
+| `vs2015_build_active` / `vs2015_build_status` / `vs2015_ide_events` | IDE 构建、完成事件与调试事件游标 |
+| `vs2015_documents` / `vs2015_document_open` / `vs2015_document_read` / `vs2015_document_replace` / `vs2015_document_save` | 文本缓冲、未保存编辑、冲突检查与显式保存 |
+| `vs2015_ide_errors_output` | 当前 Error List 与按 GUID 选择的 Output 文本 |
+| `vs2015_ide_debug_state` / `vs2015_ide_debug_breakpoints` / `vs2015_ide_debug_control` / `vs2015_ide_debug_wait` | 持续 IDE 调试、断点、单步及状态等待 |
+| `vs2015_ide_debug_inspect` / `vs2015_ide_debug_evaluate` | IDE 当前线程／栈／locals 和显式表达式求值 |
 | `vs2015_discover` | 安装来源、版本、组件、架构和 SDK 能力 |
 | `vs2015_inspect_solution` | 读取真实项目名和解决方案配置 |
 | `vs2015_tool_help` | 查询本机工具支持的开关 |
@@ -63,7 +73,7 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 | `phone_apps` | CoreCon 应用枚举、启动、终止、卸载 |
 | `phone_cli_help` / `phone_cli` / `phone_deploy` | 手机 SDK 部署帮助、原生命令和结构化部署 |
 
-详细使用方式及微软来源见 [CLI 指南](docs/cli-guide.md)、[诊断与性能指南](docs/diagnostics-performance.md)、[调试指南](docs/debug-guide.md)、[手机模拟器指南](docs/phone-guide.md)、[手机客体性能接入现状](docs/mobile-performance.md)。客户端可通过同名 MCP resources 读取，例如 `vs2015://diagnostics-performance`。
+详细使用方式及微软来源见 [IDE 指南](docs/ide-guide.md)、[CLI 指南](docs/cli-guide.md)、[诊断与性能指南](docs/diagnostics-performance.md)、[调试指南](docs/debug-guide.md)、[手机模拟器指南](docs/phone-guide.md)、[手机客体性能接入现状](docs/mobile-performance.md)。客户端可通过同名 MCP resources 读取，例如 `vs2015://ide-guide`。
 
 ## 执行语义
 
@@ -73,6 +83,7 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 - 原生结果包含退出码、stdout/stderr、耗时和截断标志。保留输出前段并持续排空管道；完整构建日志可用原生工具日志开关写文件。非零退出或超时映射为 MCP `isError`。
 - `setupTimeoutMs` 独立控制 VS 环境初始化，默认 60 秒；`timeoutMs` 控制目标执行，默认 120 秒。客户端请求超时应覆盖初始化、执行和启动余量。内存压力较大时可提高初始化期限，不能把超时视为构建成功。
 - 普通 CLI 取消/断连终止本请求的子进程树。VSPerf 采集先发送停止标记并等待清理；强制结束服务仍可能留下会话。模拟器由 SDK 服务启动，可能在启动请求超时后继续运行，应先刷新设备状态再决定是否重试或关闭。
+- IDE 取消遵循已发出／未发出区别；超时只结束桥接、不会关闭 IDE，原操作可能继续，须重新连接查状态。原始 CLI 日志、历史工件、调试变量可能含项目路径或敏感内容；按需设置 `-HistoryRoot`，共享原始资料前自行检查。本版未承诺自动识别所有秘密。
 - 截图成功生成后替换指定文件；未成功生成新图时保留原文件。默认写入系统临时目录，超过 4 MiB 的 PNG 返回路径而省略内联图片。输入返回 `issued` 表示 API 调用已返回，需用截图核验实际效果。
 
 ## 验证
@@ -98,3 +109,5 @@ npm run test:cancellation
 2026-11-17（UTC+08:00）扩展验证：真实 MSBuild 14 多节点诊断、Framework CPU／分配／GC 计数、MCP 采样与历史比较、取消清理、快照完整性及归档提取。随后完成微软签名 PerfView／CDB 的独立部署，真实 CPU/GC 离线报告与热点对照、自建进程的 CDB 托管栈和完整 dump 堆统计均通过。VSPerf 实时采集／detach 仍待管理员环境验证；手机客体性能通道仍处于核对阶段。
 
 实际工具回归默认跳过，避免依赖额外下载或操作已有进程。可为测试命令设置 `VS2015_TEST_PERFVIEW`、`VS2015_TEST_ETL`、`VS2015_TEST_TRACE_PROCESS`，验证已有 Framework CPU/GC trace 的报告；设置 `VS2015_TEST_CDB_ROOT` 验证测试自身创建的 Framework x64 进程，另可设置 `VS2015_TEST_MANAGED_DUMP` 分析已有 dump。它们不等同 `VS2015_MCP_*` 服务配置变量。
+
+IDE 实机回归使用 `VS2015_TEST_IDE_PID/START/SOLUTION/SOURCE` 和 TEMP 自有 fixture 身份记录，默认跳过；已通过真实 MCP 的未保存编辑、重建事件、断点、变量、单步、停止、两客户端租约和取消等待。本机单元测试 32 项通过；GitHub Actions 在 Windows/Linux、Node22/24 上运行同一套环境独立测试。

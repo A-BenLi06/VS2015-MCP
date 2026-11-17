@@ -1,6 +1,6 @@
 {
   "name": "visual-studio-2015-mcp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "Local MCP tools for Visual Studio 2015 using PowerShell 7",
   "type": "module",

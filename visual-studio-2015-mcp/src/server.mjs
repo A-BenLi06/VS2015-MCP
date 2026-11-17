@@ -13,8 +13,8 @@ import { ideDefinitions } from './ide.mjs';
 import { stopIdeBridge } from './ide-client.mjs';
 
 serveStdio(() => {
-  const server = new McpServer({ name: 'visual-studio-2015', version: '0.2.1' });
-  for (const name of ['cli-guide', 'phone-guide', 'diagnostics-performance', 'debug-guide', 'mobile-performance']) {
+  const server = new McpServer({ name: 'visual-studio-2015', version: '0.3.0' });
+  for (const name of ['cli-guide', 'phone-guide', 'diagnostics-performance', 'debug-guide', 'mobile-performance', 'ide-guide']) {
     server.registerResource(name, `vs2015://${name}`, { mimeType: 'text/markdown' }, async uri => ({
       contents: [{ uri: uri.href, mimeType: 'text/markdown', text: await readFile(new URL(`../docs/${name}.md`, import.meta.url), 'utf8') }],
     }));

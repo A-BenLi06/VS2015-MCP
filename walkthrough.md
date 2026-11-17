@@ -167,3 +167,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T20:44:44+08:00 — IDE关闭后的清理
 将detach移到PID存活检查前，确保IDE退出或RPC断开后仍能释放事件源与租约。常见RPC断连HRESULT单独返回IDE_DISCONNECTED；stdin读取线程结束标志使用volatile。验证：修改前后的完整自有IDE MCP流程通过，随后仅对已核实PID/启动时间/路径且无未保存文档的测试IDE执行Quit并清理；实测关闭阶段先出现RPC服务器断开，未误判成操作成功。更新桥接重新编译通过。用户原有3个IDE保持运行。CI四个Windows/Linux、Node22/24组合已全部通过。
 
+
+## 2026-11-17T20:47:34+08:00 — v0.3.0 IDE Automation 发布说明
+增加IDE指南与逐项审查跟进，记录真实会话/事件/编辑/调试工作流、取消/模态/断连恢复、CLI与IDE诊断边界及手机端仍未验收事项；不把桌面调试实测等同手机客体闭环。版本更新0.3.0，65工具/6资源握手实测通过；旧45工具保留。CI四个矩阵已成功，构建诊断/历史/MCP取消3项相关回归通过。仓库默认分支、PhoneSession/客体部署断点、持久手机输入与通用秘密检测未在本轮完成，文档明确列出。
+
