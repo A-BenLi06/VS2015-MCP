@@ -136,3 +136,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-17T18:34:53+08:00 — 固定调试器提取边界
 审查便携CDB获取器时进一步限制动态扩展DLL名称为普通文件名字符，并在每次写入前验证解析后的绝对路径仍位于本次暂存目录；不依赖上游ZIP条目名称可信。Node语法检查通过；不重新下载或替换已经验签的工具。
 
+
+## 2026-11-17T18:41:23+08:00 — v0.2.1 接入配置与双目标边界
+更新文档为本轮真实验证结果，并提供手机客体性能接入现状（WP8.1 CoreCon/WpWpr、Win10M Device Portal/WPR，未实现实采，不误称宿主计数为客体热点）。Print-McpConfig新增显式PerfView/Debugger/History路径，并修复PATH中多个node/pwsh导致配置command/env成为数组的问题；始终选择首个实际命令来源。版本更新0.2.1。验证：25项单元测试通过；真实PerfView CPU/GC/历史对照、CDB自有进程快照和dump测试通过；配置与调试集成2项通过；由生成配置启动MCP确认45工具、5资源且发现实际CDB/PerfView。无遗留PerfView/CDB/测试fixture进程。当前仍未验证管理员VSPerf实时采集与手机客体采集。
+

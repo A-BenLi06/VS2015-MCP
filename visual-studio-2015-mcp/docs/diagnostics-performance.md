@@ -57,7 +57,9 @@ Logger 在首次使用时通过已安装的 Framework `csc.exe` 编译，引用�
 {"analysis":"cpuStacks","inputPath":"D:/traces/trace.etl","processName":"MyApp","perfViewPath":"D:/tools/PerfView.exe","dryRun":false}
 ```
 
-`cpuStacks` 导出 PerfView XML stack source；`cpuCsv` 导出 CSV；`gcStats` 导出 GC HTML 和各进程 CSV。输入先复制到历史目录，再分析，避免覆盖原始 trace 旁的报告。CPU 内置导出选择最后一个同名实例，并非 PID＋启动时间筛选；GCStats 包含全部 CLR 进程，PID 重用也可能影响其输出命名。必须核对实际进程范围。
+`cpuStacks` 导出 PerfView XML stack source；`cpuCsv` 导出 CSV；`gcStats` 导出 GC HTML 和各进程 CSV。原始 ETL 先复制到历史目录；ZIP 输入先安全提取选中的 ETL，多 ETL 时传 `entryName`，`maxTraceBytes` 限制展开字节数。这样避免 PerfView 把 ZIP 的报告写到共享缓存。使用 NoGui/NoView 执行，原始目录不写报告。为兼容旧 Framework 的 MAX_PATH，内部使用短文件名，过长的历史目录会明确报错，应选择较短的 `VS2015_MCP_HISTORY`。
+
+CPU 内置导出选择最后一个同名实例，并非 PID＋启动时间筛选；GCStats 包含全部 CLR 进程，PID 重用也可能影响其输出命名。必须核对实际进程范围。
 
 PerfView CSV 会改写名称中的逗号，`Inc` 是 count，不是 InclusiveMetric，数值受文化设置影响。保留原报告并核对列和单位；需要无损调用栈时保留 XML／ETL。此扩展不启动 PerfView 实时 collect：其失败路径会内部调用影响其他会话的 Abort。
 
@@ -81,4 +83,6 @@ Private Bytes、Working Set、分配字节、堆中对象大小和 retained size
 - [PerfView v4.0.0 UserCommands](https://github.com/microsoft/perfview/blob/v4.0.0/src/PerfView/UserCommands.cs)、[导出实现](https://github.com/microsoft/perfview/blob/v4.0.0/src/PerfView/Extensibility.cs)、[collect/Abort 实现](https://github.com/microsoft/perfview/blob/v4.0.0/src/PerfView/CommandProcessor.cs)：固定版本的离线命令、CSV 局限与内部清理行为。
 - [WNODE_HEADER](https://learn.microsoft.com/en-us/windows/win32/etw/wnode-header)、[ControlTraceW](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-controltracew)：会话身份与限定会话清理。
 
-2026-11-17（UTC+08:00）已验证真实 MSBuild 错误／警告、Framework 分配与 GC 计数、宿主采样、MCP 历史比较及取消；性能 CLI 发现／帮助／dry-run／权限拒绝和归档提取也已验证。本机未安装 PerfView／CDB，当前令牌未提升权限，因此实际 ETW 采集、VSPX→PerfView 报告、CDB dump 分析尚未端到端验证。
+2026-11-17（UTC+08:00）已验证真实 MSBuild 错误／警告、Framework 分配与 GC 计数、宿主采样、MCP 历史比较及取消。随后取得微软签名 PerfView 4.0.0，并用[微软 Framework 测试 trace](https://github.com/microsoft/perfview/blob/v4.0.0/src/TraceEvent/TraceEvent.Tests/inputs/net.4.5.2.x64.etl.zip) 实测 GC HTML/CSV、CPU 函数 CSV，以及“实际报告→MCP 热点导入→历史对照”。该固定文件的 Git blob SHA1 为 `a81addc5158e6f2e643f2b393c1eb7ff5582de31`，不是本机新采集的数据。
+
+CDB 也已验证自有 Framework x64 进程快照与完整 dump 堆统计。当前令牌未提升权限，VSPerf 实时 ETW 采集／detach、真实 VSPX 采集链路仍未端到端验证。

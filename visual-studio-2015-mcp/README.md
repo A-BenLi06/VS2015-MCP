@@ -28,6 +28,9 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 | `VS2015_MCP_HISTORY` | 历史目录；默认服务工作目录下 `.vs2015-mcp/runs` |
 | `VS2015_MCP_LOGGER_CACHE` | MSBuild 诊断 Logger 缓存的父目录 |
 | `VS2015_MCP_PERFVIEW` | 可选的本机 PerfView.exe 路径，仅用于离线报告 |
+| `VS2015_MCP_DEBUGGER_ROOT` | CDB 所在目录或 Windows Debuggers 根目录 |
+
+可选工具可独立取得：`scripts/Get-PerfView.ps1 -Version 4.0.0` 校验官方 release 哈希和微软签名；`scripts/Get-WindowsDebugger.ps1` 按需提取已验证版本的微软 x64 CDB。两者只写独立用户目录，不修改 PATH。将返回路径传给 `Print-McpConfig.ps1 -PerfViewPath <exe> -DebuggerRoot <目录>`，也可加 `-HistoryRoot <目录>`。配置脚本仍只输出配置。
 
 从普通 PowerShell 环境启动，避免继承其他 VS 版本 Developer Prompt 的 INCLUDE/LIB/PATH。开发环境只装入本次子进程。脚本启动使用进程范围的 `-ExecutionPolicy Bypass`，不修改机器或用户执行策略；组织强制策略仍可能阻止运行。
 
@@ -60,7 +63,7 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 | `phone_apps` | CoreCon 应用枚举、启动、终止、卸载 |
 | `phone_cli_help` / `phone_cli` / `phone_deploy` | 手机 SDK 部署帮助、原生命令和结构化部署 |
 
-详细使用方式及微软来源见 [CLI 指南](docs/cli-guide.md)、[诊断与性能指南](docs/diagnostics-performance.md)、[调试指南](docs/debug-guide.md)、[手机模拟器指南](docs/phone-guide.md)。客户端可通过同名 MCP resources 读取，例如 `vs2015://diagnostics-performance`。
+详细使用方式及微软来源见 [CLI 指南](docs/cli-guide.md)、[诊断与性能指南](docs/diagnostics-performance.md)、[调试指南](docs/debug-guide.md)、[手机模拟器指南](docs/phone-guide.md)、[手机客体性能接入现状](docs/mobile-performance.md)。客户端可通过同名 MCP resources 读取，例如 `vs2015://diagnostics-performance`。
 
 ## 执行语义
 
@@ -92,4 +95,6 @@ npm run test:cancellation
 
 部署真实包、测试程序集、手机输入效果仍需在目标项目/就绪设备上验证。本机 XDE 公共程序集提供输入接口，但不应将其视为微软承诺长期兼容的公开自动化协议。
 
-2026-11-17（UTC+08:00）扩展验证：真实 MSBuild 14 多节点诊断、Framework CPU／分配／GC 计数、MCP 采样与历史比较、取消清理、快照完整性及归档提取。CDB 和 PerfView 尚未安装，当前进程非管理员；实际 CDB 调试、VSPerf 采集／detach 和 PerfView 报告尚未端到端验证。进程趋势、GCStats、类型内存统计与分配调用栈是不同能力，不能混称为全部热点已实测。
+2026-11-17（UTC+08:00）扩展验证：真实 MSBuild 14 多节点诊断、Framework CPU／分配／GC 计数、MCP 采样与历史比较、取消清理、快照完整性及归档提取。随后完成微软签名 PerfView／CDB 的独立部署，真实 CPU/GC 离线报告与热点对照、自建进程的 CDB 托管栈和完整 dump 堆统计均通过。VSPerf 实时采集／detach 仍待管理员环境验证；手机客体性能通道仍处于核对阶段。
+
+实际工具回归默认跳过，避免依赖额外下载或操作已有进程。可为测试命令设置 `VS2015_TEST_PERFVIEW`、`VS2015_TEST_ETL`、`VS2015_TEST_TRACE_PROCESS`，验证已有 Framework CPU/GC trace 的报告；设置 `VS2015_TEST_CDB_ROOT` 验证测试自身创建的 Framework x64 进程，另可设置 `VS2015_TEST_MANAGED_DUMP` 分析已有 dump。它们不等同 `VS2015_MCP_*` 服务配置变量。
