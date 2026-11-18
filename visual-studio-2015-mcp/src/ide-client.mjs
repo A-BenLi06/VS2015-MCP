@@ -131,7 +131,10 @@ export class IdeBridgeClient {
         this.fail(child, new IdeBridgeError('IDE_PROTOCOL_ERROR', 'The IDE bridge returned an unexpected response ID or envelope.')); return;
       }
       this.active = null; this.cleanup(item);
-      if (message.error) item.failure(new IdeBridgeError(message.error.code || 'IDE_OPERATION_FAILED', message.error.message || 'The IDE operation failed.', { backendError: message.error }));
+      if (message.error) item.failure(new IdeBridgeError(message.error.code || 'IDE_OPERATION_FAILED', message.error.message || 'The IDE operation failed.', {
+        ...(message.error.operationMayContinue !== undefined ? { operationMayContinue: message.error.operationMayContinue } : {}),
+        backendError: message.error,
+      }));
       else item.success(message.result);
       void this.pump();
     }

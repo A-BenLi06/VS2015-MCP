@@ -314,3 +314,75 @@ test('conflicting or excessive target guard contracts fail before connecting to 
   await assert.rejects(excess.manager.open(excess.input), { code: 'PHONE_IDE_TARGET_GUARD_LIMIT' });
   assert.equal(excess.clients[0].calls.length, 0);
 });
+
+test('PhoneSession verifies paused guest application identity against bound manifest and rejects mismatches', async t => {
+  const f = fixture(); t.after(() => f.manager.stopAll());
+  let guestReply = {
+    confirmed: true, status: 'observed', pauseId: IDS.ide, frameId: IDS.vm, programIdentityKey: 'prog-1',
+    applicationIdentity: { packageName: 'actual-manifest-name', publisher: 'CN=Fixture', fullName: 'actual-manifest-name_1.0.0.0_x86__hash', applicationId: 'App', version: { major: 1, minor: 0, build: 0, revision: 0 } },
+    rawProductId: { available: true, isValidValue: true, normalizedGuid: IDS.product },
+  };
+  const defs = [
+    ...f.definitions,
+    {
+      name: 'vs2015_ide_guest_app_identity',
+      schema: z.object({ sessionId: z.guid(), pauseId: z.guid(), frameId: z.guid(), includeProductId: z.boolean().default(true), evaluationTimeoutMs: z.number().int().min(100).max(10000).default(3000), timeoutMs: z.number().default(15000) }),
+      run: async () => structuredClone(guestReply),
+    },
+  ];
+  const phoneManager = new PhoneSessionManager({
+    clientFactory: ({ input }) => ({
+      identity: { processId: input.processId, startTimeUtc: input.expectedStartTimeUtc, vmId: input.expectedVmId, vmName: 'Own ' + input.processId, executable: 'C:\\XDE\\8.1\\XDE.exe', directory: 'C:\\XDE\\8.1' },
+      mapping: { matched: true, method: 'sdk-endpoint-pair', deviceId: input.coreConDeviceId, localeId: input.localeId, vmId: input.expectedVmId, processId: input.processId, hostAddress: '169.254.1.1', guestAddress: '169.254.1.2' },
+      async request(op) {
+        if (op === 'open' || op === 'identity') return { sessionId: 'backend-guest', identity: this.identity, crossChannelMapping: this.mapping };
+        if (op === 'close') return { sessionId: 'backend-guest', closed: true, vmClosed: false, cleanupWarnings: [], unreleasedKeys: [] };
+        return { sessionId: 'backend-guest', operation: op, heldKeys: [] };
+      },
+      async stop() { return { cleanupStatus: 'completed', forcedTermination: false }; },
+    }),
+    ideInvoke: async (op, args) => {
+      if (op === 'solutionStatus') return structuredClone(f.live.status);
+      if (op === 'projectAppIdentity') return structuredClone(f.live.manifest);
+      if (op === 'projectProperties') {
+        const properties = f.live.properties[args.scope];
+        return args.propertyName ? { properties: [{ name: args.propertyName, value: properties[args.propertyName], available: true }] } : { properties: Object.keys(properties).map(name => ({ name, valueRead: false })), truncated: false };
+      }
+      throw new Error('Unexpected op: ' + op);
+    },
+    ideDefinitions: defs,
+  });
+  t.after(() => phoneManager.stopAll());
+  const session = await phoneManager.open(f.input);
+  assert.equal(session.applicationVerification, 'project-only');
+
+  const matched = await phoneManager.ide({ phoneSessionId: session.phoneSessionId, toolName: 'vs2015_ide_guest_app_identity', arguments: { pauseId: IDS.ide, frameId: IDS.vm } });
+  assert.equal(matched.applicationVerification, 'guest-matched');
+  assert.equal(matched.guestApplicationMatch.matched, true);
+  assert.equal(matched.guestApplicationMatch.productIdVerified, true);
+
+  // Subsequent non-identity calls stay project-only rather than claiming persistent guest identity across execution.
+  const built = await phoneManager.ide({ phoneSessionId: session.phoneSessionId, toolName: 'vs2015_project_build', arguments: { projectUniqueName: 'Phone.csproj', action: 'build', expectedConfigurationToken: 'cfg-one' } });
+  assert.equal(built.applicationVerification, 'project-only');
+
+  const base = structuredClone(guestReply);
+  guestReply = { confirmed: false, status: 'unconfirmed', applicationIdentity: null, rawProductId: null };
+  const unconfirmed = await phoneManager.ide({ phoneSessionId: session.phoneSessionId, toolName: 'vs2015_ide_guest_app_identity', arguments: { pauseId: IDS.ide, frameId: IDS.vm } });
+  assert.equal(unconfirmed.applicationVerification, 'unconfirmed');
+  assert.equal(unconfirmed.guestApplicationMatch, null);
+
+  for (const mutate of [
+    reply => { reply.applicationIdentity.packageName = 'wrong.pkg'; },
+    reply => { reply.applicationIdentity.publisher = 'CN=Other'; },
+    reply => { reply.applicationIdentity.applicationId = 'OtherApp'; },
+    reply => { reply.applicationIdentity.version.build = 99; },
+    reply => { reply.rawProductId.normalizedGuid = IDS.vm2; },
+  ]) {
+    guestReply = structuredClone(base);
+    mutate(guestReply);
+    await assert.rejects(
+      phoneManager.ide({ phoneSessionId: session.phoneSessionId, toolName: 'vs2015_ide_guest_app_identity', arguments: { pauseId: IDS.ide, frameId: IDS.vm } }),
+      { code: 'PHONE_GUEST_APP_MISMATCH' },
+    );
+  }
+});

@@ -53,7 +53,10 @@ internal static partial class Program {
                     while (cause is System.Reflection.TargetInvocationException && cause.InnerException != null) cause = cause.InnerException;
                     string code = cause.Data.Contains("code") ? (string)cause.Data["code"] : cause is COMException ? "IDE_COM_ERROR" : "IDE_ERROR";
                     if(cause is COMException && new[]{unchecked((int)0x800706BA),unchecked((int)0x80010108),unchecked((int)0x800401FD),unchecked((int)0x80010007),unchecked((int)0x80010012)}.Contains(cause.HResult))code="IDE_DISCONNECTED";
-                    Write(Map("id",id,"error",Map("code",code,"message",cause.Message,"hresult",cause.HResult)));
+                    var err = Map("code",code,"message",cause.Message,"hresult",cause.HResult);
+                    if(cause.Data.Contains("operationMayContinue"))err["operationMayContinue"]=cause.Data["operationMayContinue"];
+                    if(cause.Data.Contains("details"))err["details"]=cause.Data["details"];
+                    Write(Map("id",id,"error",err));
                 } finally { Deadline = 0; Busy = false; }
             } else if (Ended) {
                 foreach (var session in Sessions.Values.ToArray()) session.Dispose();
@@ -98,6 +101,7 @@ internal static partial class Program {
             case "selectThread": return SelectThread(s,r);
             case "selectFrame": return SelectFrame(s,r);
             case "evaluate": return EvaluateInContext(s,r);
+            case "guestDebugAppIdentity": return GuestDebugAppIdentity(s,r);
             case "documents": return Documents(s);
             case "openDocument": return OpenDocument(s,r);
             case "readDocument": return ReadDocument(s,r);

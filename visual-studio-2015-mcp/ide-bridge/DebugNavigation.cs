@@ -38,9 +38,11 @@ internal static partial class Program {
     sealed partial class Session {
         public string PauseId;
         string PauseProgramIdentity;
+        public string ObservedProgramIdentity { get { return PauseProgramIdentity; } }
         public readonly Dictionary<string,DebugThreadRecord> DebugThreads=new Dictionary<string,DebugThreadRecord>();
         public readonly Dictionary<string,DebugFrameRecord> DebugFrames=new Dictionary<string,DebugFrameRecord>();
-        public void InvalidatePause(){PauseId=null;PauseProgramIdentity=null;DebugThreads.Clear();DebugFrames.Clear();}
+        partial void OnInvalidatePause();
+        public void InvalidatePause(){OnInvalidatePause();PauseId=null;PauseProgramIdentity=null;DebugThreads.Clear();DebugFrames.Clear();}
         public void BeginPause(){InvalidatePause();PauseId=Guid.NewGuid().ToString();}
         public void EnsurePause(){
             RequireBreak(this);

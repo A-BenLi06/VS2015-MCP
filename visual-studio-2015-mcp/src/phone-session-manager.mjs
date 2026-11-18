@@ -21,7 +21,7 @@ export const PHONE_IDE_TOOL_ALLOWLIST = Object.freeze([
   'vs2015_documents', 'vs2015_document_open', 'vs2015_document_read', 'vs2015_document_replace', 'vs2015_document_save', 'vs2015_document_edit',
   'vs2015_ide_errors_output', 'vs2015_ide_debug_state', 'vs2015_ide_debug_breakpoints', 'vs2015_ide_debug_control',
   'vs2015_ide_debug_inspect', 'vs2015_ide_debug_select_thread', 'vs2015_ide_debug_select_frame', 'vs2015_ide_debug_evaluate', 'vs2015_ide_debug_wait',
-  'vs2015_ide_xaml_tree', 'vs2015_ide_xaml_action',
+  'vs2015_ide_guest_app_identity', 'vs2015_ide_xaml_tree', 'vs2015_ide_xaml_action',
 ]);
 export class PhoneSessionError extends Error {
   constructor(code, message, details = {}) { super(message); this.name = 'PhoneSessionError'; this.code = code; Object.assign(this, details); }
@@ -97,6 +97,30 @@ function sameBinding(a, b) {
   return a.configurationToken === b.configurationToken && samePath(a.solutionPath, b.solutionPath) && samePath(a.projectPath, b.projectPath) &&
     samePath(a.projectUniqueName, b.projectUniqueName) && samePath(a.manifestPath, b.manifestPath) && a.manifestSha256 === b.manifestSha256 &&
     a.ideProcessId === b.ideProcessId && utcIdentityTicks(a.ideStartTimeUtc) === utcIdentityTicks(b.ideStartTimeUtc) && a.applicationId === b.applicationId;
+}
+function verifyGuestApplication(snapshot, result) {
+  if (result?.confirmed !== true || !result?.applicationIdentity) return { applicationVerification: 'unconfirmed', guestApplicationMatch: null };
+  const observed = result.applicationIdentity;
+  const parsedVersion = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(snapshot.packageIdentity?.version ?? '');
+  const expectedVersion = parsedVersion ? { major: Number(parsedVersion[1]), minor: Number(parsedVersion[2]), build: Number(parsedVersion[3]), revision: Number(parsedVersion[4]) } : null;
+  const mismatches = [];
+  if (observed.packageName !== snapshot.packageIdentity?.name) mismatches.push('packageName');
+  if (observed.publisher !== snapshot.packageIdentity?.publisher) mismatches.push('publisher');
+  if (observed.applicationId !== snapshot.applicationId) mismatches.push('applicationId');
+  if (!expectedVersion || !observed.version || observed.version.major !== expectedVersion.major || observed.version.minor !== expectedVersion.minor ||
+      observed.version.build !== expectedVersion.build || observed.version.revision !== expectedVersion.revision) mismatches.push('version');
+  const productIdVerified = Boolean(result.rawProductId?.available === true && snapshot.phoneIdentity?.phoneProductId);
+  if (productIdVerified && !sameGuid(result.rawProductId.normalizedGuid, snapshot.phoneIdentity.phoneProductId)) mismatches.push('phoneProductId');
+  if (mismatches.length) {
+    throw new PhoneSessionError('PHONE_GUEST_APP_MISMATCH', 'The observed paused debuggee identity does not match the bound project manifest.', {
+      backendError: { details: { mismatches, expectedManifest: { packageIdentity: snapshot.packageIdentity, applicationId: snapshot.applicationId, phoneIdentity: snapshot.phoneIdentity }, observedGuest: observed, rawProductId: result.rawProductId } },
+    });
+  }
+  return {
+    applicationVerification: 'guest-matched',
+    guestApplicationMatch: { matched: true, pauseId: result.pauseId, programIdentityKey: result.programIdentityKey,
+      packageName: observed.packageName, fullName: observed.fullName, applicationId: observed.applicationId, version: observed.version, productIdVerified },
+  };
 }
 
 export class PhoneSessionManager {
@@ -293,7 +317,9 @@ export class PhoneSessionManager {
     if (isPhoneGo) check(isDeepStrictEqual(parsed.expectedPhoneBinding, expectedPhoneBinding), 'PHONE_IDE_GUARD_UNSUPPORTED',
       'The registered IDE Go schema did not preserve the complete phone preflight guard. Update the IDE tool/bridge before dispatching Go.');
     const result = checkedResult(await definition.run(parsed, context));
-    return { ...result, phoneSessionId: record.id, applicationVerification: 'project-only', toolName: input.toolName };
+    const verification = input.toolName === 'vs2015_ide_guest_app_identity'
+      ? verifyGuestApplication(record.snapshot, result) : { applicationVerification: 'project-only' };
+    return { ...result, phoneSessionId: record.id, ...verification, toolName: input.toolName };
   }); }
   close(input) {
     const record = this.get(input.phoneSessionId); if (record.closePromise) return record.closePromise;

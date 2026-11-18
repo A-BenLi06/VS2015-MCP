@@ -28,6 +28,7 @@ export function phoneSessionErrorResult(error) {
     ...(error.cleanupWarnings ? { cleanupWarnings: error.cleanupWarnings } : {}),
     ...(error.cleanupDetails ? { cleanupDetails: error.cleanupDetails } : {}),
     ...(error.backendError ? { backendError: error.backendError } : {}),
+    ...(error.backendError?.details ? { details: error.backendError.details } : {}),
     ...(error.reason ? { reason: error.reason } : {}),
   } };
 }
@@ -41,7 +42,7 @@ export async function formatPhoneSessionScreenshot(result, input) {
 export function createPhoneSessionDefinitions(manager) {
   const run = method => async (input, ctx = {}) => { try { return await manager[method](input, ctx); } catch (error) { return phoneSessionErrorResult(error); } };
   return [
-    { name: 'phone_session_open', description: 'Open an opaque session pinned to explicit XDE PID/start/Hyper-V GUID with its own persistent SDK process. Optional IDE binding requires exact CoreCon GUID/locale and endpoint-pair proof plus an included saved project manifest. Application verification remains project-only.',
+    { name: 'phone_session_open', description: 'Open an opaque session pinned to explicit XDE PID/start/Hyper-V GUID with its own persistent SDK process. Optional IDE binding requires exact CoreCon GUID/locale and endpoint-pair proof plus an included saved project manifest. Initial verification is project-only until vs2015_ide_guest_app_identity confirms a paused debuggee.',
       schema: z.object({ processId: z.number().int().positive().max(2147483647), expectedStartTimeUtc: z.iso.datetime({ offset: true }), expectedVmId: z.guid(),
         xdeRoots: z.array(text).max(32).optional(), coreConDeviceId: z.guid().optional(), localeId: z.number().int().min(1).max(65535).optional(),
         coreConServicePort: z.number().int().min(0).max(65535).optional(), ideBinding: binding.optional(), timeoutMs: timeoutMs.default(30000),
@@ -55,7 +56,7 @@ export function createPhoneSessionDefinitions(manager) {
     { name: 'phone_session_screenshot', description: 'Validate this pinned session and atomically capture its actual guest PNG. Return an inline image up to 4 MiB; larger files remain available at the returned path.',
       schema: z.object({ ...session, path: text.optional(), includeImage: z.boolean().default(true) }).strict(), run: run('screenshot'), formatResult: formatPhoneSessionScreenshot },
     { name: 'phone_session_close', description: 'Release this session and its held keys using only its original SDK handle, then end that controller. IDE validation is bypassed for cleanup. The emulator VM is left running.', schema: z.object(session).strict(), run: run('close') },
-    { name: 'phone_session_ide', description: 'Route an explicitly allowlisted IDE build/debug/document/XAML tool through this validated phone binding. Existing tool schemas apply and the IDE session is forced. Configuration, startup, target-property changes, opening solutions and detach are forbidden. Guest application identity is not yet verified. Solution build tools retain their solution-wide scope.',
+    { name: 'phone_session_ide', description: 'Route an explicitly allowlisted IDE build/debug/document/XAML/guest-identity tool through this validated phone binding. Existing tool schemas apply and the IDE session is forced. Configuration, startup, target-property changes, opening solutions and detach are forbidden. Run vs2015_ide_guest_app_identity on a paused debuggee to confirm guest-matched identity against the bound manifest; other calls remain project-only.',
       schema: z.object({ ...session, timeoutMs: z.number().int().min(1000).max(600000).optional(), toolName: z.enum(PHONE_IDE_TOOL_ALLOWLIST), arguments: z.record(z.string(), z.unknown()).default({}) }).strict(), run: run('ide') },
   ];
 }
