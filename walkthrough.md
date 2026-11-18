@@ -183,3 +183,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-18T11:47:35+08:00 — 用户断点保护的可重复实机测试
 新增受owned-instance身份约束的真实桥接回归及独立STA手动断点helper：观察不授权、拒绝删除用户断点、相同位置Add先拒绝避免改变disabled设置、detach/EOF自动清自己断点。状态harness使用真实idle IDE和测试自身内存账本验证丢事件协调及64条上限，无产品testhook。全部实机通过；只改专用TEMP fixture，手动测试断点已删除。
 
+
+## 2026-11-18T11:53:52+08:00 — 项目系统配置与递归发现
+新增独立ProjectSystem partial，递归发现Solution Folder中的真实项目，返回活动配置/平台/启动项目和configurationToken。新增受token与expectedValue保护的配置/启动项目/项目属性设置；从实际属性发现调试目标，未硬编码通用手机属性。新增项目级BuildProject/DeployProject入口并记录配置/平台、项目scope和唯一名。验证：真实TEMP嵌套Library被发现，Release→Debug切换与过期token拒绝、folder不能作启动项目、StartArguments精确值冲突/恢复、nested project-scope构建事件完整成功。实机MCP回归通过；项目级部署待手机实际事件验证，未据编译结果宣称部署通过。
+

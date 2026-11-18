@@ -80,6 +80,11 @@ internal static partial class Program {
         s.CheckIdentity();
         switch(operation) {
             case "solutionStatus": return SolutionStatus(s);
+            case "configurations": return ConfigurationInventory(s);
+            case "configureSolution": return ConfigureSolution(s,r);
+            case "projectBuild": return StartProjectBuild(s,r);
+            case "projectProperties": return ProjectProperties(s,r);
+            case "setProjectProperty": return SetProjectProperty(s,r);
             case "openSolution": RequireDesign(s);if(s.Dte.Solution.IsOpen)throw Error("SOLUTION_ALREADY_OPEN","Close or choose another IDE before opening a different solution."); string solution=Path.GetFullPath(Text(r,"path"));if(!File.Exists(solution))throw Error("FILE_NOT_FOUND",solution);s.Dte.Solution.Open(solution);return SolutionStatus(s);
             case "buildActive": return StartBuild(s,r);
             case "buildStatus": return BuildStatus(s,r);
@@ -158,12 +163,7 @@ internal static partial class Program {
             throw Error("DTE_UNAVAILABLE","The selected VS2015 instance is not registered in the ROT for this user/integrity level.");
         } finally {if(iterator!=null)Marshal.ReleaseComObject(iterator);if(context!=null)Marshal.ReleaseComObject(context);if(table!=null)Marshal.ReleaseComObject(table);}
     }
-    static object SolutionStatus(Session s) {
-        var solution=s.Dte.Solution;var projects=new List<object>();
-        foreach(Project project in solution.Projects) {if(projects.Count>=500)break;try{projects.Add(Map("name",project.Name,"uniqueName",project.UniqueName,"kind",project.Kind,"fileName",project.FullName));}catch(COMException){}}
-        string configuration=null,platform=null;try{var active=(SolutionConfiguration2)solution.SolutionBuild.ActiveConfiguration;configuration=active.Name;platform=active.PlatformName;}catch(COMException){}
-        return Map("sessionId",s.Id,"isOpen",solution.IsOpen,"fullName",solution.FullName,"saved",solution.Saved,"activeConfiguration",configuration,"activePlatform",platform,"startupProjects",solution.SolutionBuild.StartupProjects,"projects",projects,"buildState",solution.SolutionBuild.BuildState.ToString(),"debugger",DebugState(s));
-    }
+    static object SolutionStatus(Session s) { return RecursiveSolutionStatus(s); }
     static object StartBuild(Session s,Dictionary<string,object> r) {
         RequireDesign(s);if(!s.Dte.Solution.IsOpen)throw Error("NO_SOLUTION","No solution is open.");
         if(s.ActiveBuild!=null||s.Dte.Solution.SolutionBuild.BuildState==vsBuildState.vsBuildStateInProgress)throw Error("BUILD_BUSY","An IDE build is already in progress.");
@@ -243,8 +243,8 @@ internal static partial class Program {
     }
 
     sealed class BuildJob {
-        public string Id,Action,Phase,State,StartedUtc,FinishedUtc;public bool Complete;public int? LastBuildInfo;public bool SawBegin;
-        public Dictionary<string,object> Info(){return Map("buildId",Id,"action",Action,"phase",Phase,"state",State,"complete",Complete,"terminal",State!="started","startedAtUtc",StartedUtc,"finishedAtUtc",FinishedUtc,"lastBuildInfo",LastBuildInfo,"beginEventObserved",SawBegin);}
+        public string Id,Action,Phase,State,StartedUtc,FinishedUtc,ProjectUniqueName,Configuration,Platform;public bool Complete;public int? LastBuildInfo;public bool SawBegin;public vsBuildScope ExpectedScope=vsBuildScope.vsBuildScopeSolution;
+        public Dictionary<string,object> Info(){return Map("buildId",Id,"action",Action,"phase",Phase,"state",State,"complete",Complete,"terminal",State!="started","startedAtUtc",StartedUtc,"finishedAtUtc",FinishedUtc,"lastBuildInfo",LastBuildInfo,"beginEventObserved",SawBegin,"projectUniqueName",ProjectUniqueName,"configuration",Configuration,"platform",Platform,"scope",ExpectedScope.ToString());}
     }
     sealed class BreakpointRecord {
         public readonly string Id=Guid.NewGuid().ToString();public readonly Breakpoint Value;public readonly long Identity;public readonly bool Owned;public string OwnershipTag;
@@ -281,7 +281,7 @@ internal static partial class Program {
             if(record.OwnershipTag!=null&&record.Value.Tag!=record.OwnershipTag)throw Error("BREAKPOINT_OWNERSHIP_CHANGED","The breakpoint ownership tag changed; it will be preserved.");
             record.Value.Delete();
         }
-        bool MatchesBuild(vsBuildScope scope,vsBuildAction action){if(ActiveBuild==null||scope!=vsBuildScope.vsBuildScopeSolution)return false;return (ActiveBuild.Phase=="rebuild"&&action==vsBuildAction.vsBuildActionRebuildAll)||(ActiveBuild.Phase=="clean"&&action==vsBuildAction.vsBuildActionClean)||(ActiveBuild.Phase=="build"&&action==vsBuildAction.vsBuildActionBuild)||(ActiveBuild.Phase=="deploy"&&action==vsBuildAction.vsBuildActionDeploy);}
+        bool MatchesBuild(vsBuildScope scope,vsBuildAction action){if(ActiveBuild==null||scope!=ActiveBuild.ExpectedScope)return false;return (ActiveBuild.Phase=="rebuild"&&action==vsBuildAction.vsBuildActionRebuildAll)||(ActiveBuild.Phase=="clean"&&action==vsBuildAction.vsBuildActionClean)||(ActiveBuild.Phase=="build"&&action==vsBuildAction.vsBuildActionBuild)||(ActiveBuild.Phase=="deploy"&&action==vsBuildAction.vsBuildActionDeploy);}
         void BeginBuild(vsBuildScope scope,vsBuildAction action){if(MatchesBuild(scope,action))ActiveBuild.SawBegin=true;Event("buildBegin",Map("scope",scope.ToString(),"action",action.ToString(),"buildId",ActiveBuild==null?null:ActiveBuild.Id));}
         void DoneBuild(vsBuildScope scope,vsBuildAction action){
             try { DoneBuildCore(scope,action); }
