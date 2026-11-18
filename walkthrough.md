@@ -175,3 +175,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-18T11:43:16+08:00 — 连接发布分支历史
 核实远端main仅有LICENSE且与开发分支无共同祖先，使用正常合并连接两条历史；保留两份原有版权署名，MIT正文不变，不重写提交。这样后续可以经常规PR将完整工程合入默认main，而不是强推覆盖初始化历史。验证：main树确实仅LICENSE，合并冲突仅该文件；git diff --check通过。
 
+
+## 2026-11-18T11:45:20+08:00 — IDE可靠性：断点所有权与构建协调
+断点改为observed/owned分离并以COM身份跟踪，列举不授予所有权，普通删除拒绝用户断点；优雅detach/EOF清理本会话owned断点并校验辅助Tag。Add前保留实际断点身份，防止将返回的旧断点认领。新增buildReconcile只在IDE实际idle时将丢完成证据的active记录标unconfirmed并释放自动化锁，不猜成功、不停止构建。构建历史限制64条并报告淘汰数量；documents返回activeDocument。验证：专用IDE PID65284中disabled手动断点不能删且detach后保留，新建owned断点被清理；真实idle状态harness验证70条记录保留64/淘汰6、协调不伪造成功；旧完整MCP编辑/重建/断点/变量/单步流程通过。
+

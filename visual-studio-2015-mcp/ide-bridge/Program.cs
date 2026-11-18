@@ -16,7 +16,7 @@ using EnvDTE80;
 
 // One persistent STA owns every RCW and event subscription. stdin is only read
 // on a worker; all outgoing JSON is written by this STA through a real message pump.
-internal static class Program {
+internal static partial class Program {
     static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 8388608, RecursionLimit = 64 };
     static readonly ConcurrentQueue<string> Input = new ConcurrentQueue<string>();
     static readonly Dictionary<string, Session> Sessions = new Dictionary<string, Session>();
@@ -83,6 +83,7 @@ internal static class Program {
             case "openSolution": RequireDesign(s);if(s.Dte.Solution.IsOpen)throw Error("SOLUTION_ALREADY_OPEN","Close or choose another IDE before opening a different solution."); string solution=Path.GetFullPath(Text(r,"path"));if(!File.Exists(solution))throw Error("FILE_NOT_FOUND",solution);s.Dte.Solution.Open(solution);return SolutionStatus(s);
             case "buildActive": return StartBuild(s,r);
             case "buildStatus": return BuildStatus(s,r);
+            case "buildReconcile": return ReconcileBuild(s,r);
             case "events": int after=Int(r,"afterSequence",0,0,int.MaxValue), count=Int(r,"limit",100,1,500);return Map("events",s.Events.Where(e=>Convert.ToInt32(e["sequence"])>after).Take(count).ToArray(),"lastSequence",s.Sequence,"oldestSequence",s.Events.Count>0?s.Events[0]["sequence"]:(object)null);
             case "debugState": return DebugState(s);
             case "breakpoints": return Breakpoints(s,r);
@@ -168,27 +169,42 @@ internal static class Program {
         if(s.ActiveBuild!=null||s.Dte.Solution.SolutionBuild.BuildState==vsBuildState.vsBuildStateInProgress)throw Error("BUILD_BUSY","An IDE build is already in progress.");
         string action=Text(r,"action","build");if(!new[]{"build","rebuild","clean","deploy"}.Contains(action))throw Error("INVALID_REQUEST","Unsupported build action.");
         var job=new BuildJob{Id=Guid.NewGuid().ToString(),Action=action,State="started",StartedUtc=DateTime.UtcNow.ToString("o"),Phase=action};
-        s.Builds.Add(job.Id,job);s.ActiveBuild=job;
+        s.TrackBuild(job);s.ActiveBuild=job;
         // SolutionBuild has no Rebuild method. Invoke only this fixed standard
         // IDE command; completion still comes from the RebuildAll events.
         try{if(action=="rebuild")s.Dte.ExecuteCommand("Build.RebuildSolution","");else if(action=="clean")s.Dte.Solution.SolutionBuild.Clean(false);else if(action=="deploy")s.Dte.Solution.SolutionBuild.Deploy(false);else s.Dte.Solution.SolutionBuild.Build(false);}
         catch{job.State="start-failed";job.Complete=false;s.ActiveBuild=null;throw;}
         return job.Info();
     }
-    static object BuildStatus(Session s,Dictionary<string,object> r) {string id=Text(r,"buildId");BuildJob job;if(id==null||!s.Builds.TryGetValue(id,out job))throw Error("BUILD_NOT_FOUND","Unknown build ID for this session.");var info=job.Info();info["ideBuildState"]=s.Dte.Solution.SolutionBuild.BuildState.ToString();return info;}
+    static object BuildStatus(Session s,Dictionary<string,object> r) {BuildJob job=FindBuild(s,r);var info=job.Info();info["ideBuildState"]=s.Dte.Solution.SolutionBuild.BuildState.ToString();info["retentionLimit"]=Session.MaximumBuilds;info["evictedBuilds"]=s.EvictedBuilds;return info;}
+    static BuildJob FindBuild(Session s,Dictionary<string,object> r) {string id=Text(r,"buildId");BuildJob job;if(id==null||!s.Builds.TryGetValue(id,out job))throw Error("BUILD_NOT_FOUND","Unknown or evicted build ID for this session.");return job;}
+    static object ReconcileBuild(Session s,Dictionary<string,object> r) {
+        BuildJob job=FindBuild(s,r);var actual=s.Dte.Solution.SolutionBuild.BuildState;
+        if(actual==vsBuildState.vsBuildStateInProgress)throw Error("BUILD_BUSY","The IDE reports a build in progress; reconciliation will not stop or unlock it.");
+        bool reconciled=false;
+        if(object.ReferenceEquals(s.ActiveBuild,job)){
+            job.State="unconfirmed";job.Complete=false;job.LastBuildInfo=null;job.FinishedUtc=DateTime.UtcNow.ToString("o");s.ActiveBuild=null;reconciled=true;
+            s.Event("buildReconciled",Map("buildId",job.Id,"ideBuildState",actual.ToString(),"outcomeKnown",false));
+        }
+        var info=job.Info();info["reconciled"]=reconciled;info["ideBuildState"]=actual.ToString();info["outcomeKnown"]=job.Complete;return info;
+    }
     static string Mode(dbgDebugMode mode) {return mode==dbgDebugMode.dbgBreakMode?"break":mode==dbgDebugMode.dbgRunMode?"run":"design";}
     static object DebugState(Session s) {var debugger=s.Dte.Debugger;var processes=new List<object>();foreach(EnvDTE.Process process in debugger.DebuggedProcesses){if(processes.Count>=100)break;processes.Add(Map("processId",process.ProcessID,"name",process.Name));}return Map("mode",Mode(debugger.CurrentMode),"modeValue",(int)debugger.CurrentMode,"reason",debugger.LastBreakReason.ToString(),"processes",processes,"lastSequence",s.Sequence,"lastDebuggerEventSequence",s.LastDebuggerEventSequence);}
     static object Breakpoints(Session s,Dictionary<string,object> r) {
         string action=Text(r,"action","list");
         if(action=="add") {
             RequireDesignOrBreak(s);string file=Text(r,"file"),function=Text(r,"function");if(string.IsNullOrWhiteSpace(file)==string.IsNullOrWhiteSpace(function))throw Error("INVALID_REQUEST","Specify exactly one file or function.");
+            var before=new HashSet<long>();foreach(Breakpoint existing in s.Dte.Debugger.Breakpoints)before.Add(ComIdentity(existing));
             var added=s.Dte.Debugger.Breakpoints.Add(function??"",file==null?"":Path.GetFullPath(file),Int(r,"line",1,1,int.MaxValue),1,"",dbgBreakpointConditionType.dbgBreakpointConditionTypeWhenTrue,"","",0,"",0,dbgHitCountType.dbgHitCountTypeNone);
-            foreach(Breakpoint bp in added)s.RememberBreakpoint(bp);
+            foreach(Breakpoint bp in added)s.RememberBreakpoint(bp,!before.Contains(ComIdentity(bp)));
         } else if(action=="delete") {
-            string id=Text(r,"breakpointId");Breakpoint bp;if(id==null||!s.Breakpoints.TryGetValue(id,out bp))throw Error("BREAKPOINT_NOT_FOUND","Delete requires a breakpointId obtained from this bridge.");bp.Delete();s.Breakpoints.Remove(id);
+            string id=Text(r,"breakpointId");BreakpointRecord record;if(id==null||!s.Breakpoints.TryGetValue(id,out record))throw Error("BREAKPOINT_NOT_FOUND","Delete requires an ID observed in this session.");
+            if(!record.Owned)throw Error("BREAKPOINT_NOT_OWNED","This breakpoint was observed, not created by this automation session.");
+            s.DeleteOwnedBreakpoint(record);s.Breakpoints.Remove(id);
         } else if(action!="list")throw Error("INVALID_REQUEST","Unsupported breakpoint action.");
-        var rows=new List<object>();foreach(Breakpoint bp in s.Dte.Debugger.Breakpoints){if(rows.Count>=500)break;string id=s.RememberBreakpoint(bp);rows.Add(Map("breakpointId",id,"file",bp.File,"line",bp.FileLine,"function",bp.FunctionName,"enabled",bp.Enabled,"type",bp.Type.ToString()));}return Map("breakpoints",rows);
+        var rows=new List<object>();foreach(Breakpoint bp in s.Dte.Debugger.Breakpoints){if(rows.Count>=500)break;BreakpointRecord record=s.RememberBreakpoint(bp,false);rows.Add(Map("breakpointId",record.Id,"owned",record.Owned,"file",bp.File,"line",bp.FileLine,"function",bp.FunctionName,"enabled",bp.Enabled,"type",bp.Type.ToString()));}return Map("breakpoints",rows);
     }
+    static long ComIdentity(object value){IntPtr pointer=Marshal.GetIUnknownForObject(value);try{return pointer.ToInt64();}finally{Marshal.Release(pointer);}}
     static void RequireDesignOrBreak(Session s){if(s.Dte.Debugger.CurrentMode==dbgDebugMode.dbgRunMode)throw Error("DEBUGGER_RUNNING","Pause execution before changing breakpoints.");}
     static object DebugControl(Session s,Dictionary<string,object> r) {
         string action=Text(r,"action");var debugger=s.Dte.Debugger;var mode=debugger.CurrentMode;int afterSequence=s.LastDebuggerEventSequence;
@@ -215,7 +231,7 @@ internal static class Program {
     static string ReadText(TextDocument text){return text.EndPoint.AtStartOfDocument ? "" : text.StartPoint.CreateEditPoint().GetText(text.EndPoint);}
     static Document FindDocument(Session s,string path){if(path==null)throw Error("INVALID_REQUEST","path is required.");string full=Path.GetFullPath(path);foreach(Document d in s.Dte.Documents){if(string.Equals(d.FullName,full,StringComparison.OrdinalIgnoreCase))return d;}throw Error("DOCUMENT_NOT_OPEN","Open this document in the selected IDE first.");}
     static object DocumentInfo(Document d){return Map("path",d.FullName,"name",d.Name,"saved",d.Saved,"readOnly",d.ReadOnly,"kind",d.Kind,"language",d.Language);}
-    static object Documents(Session s){var docs=new List<object>();foreach(Document d in s.Dte.Documents){if(docs.Count>=200)break;docs.Add(DocumentInfo(d));}return Map("documents",docs);}
+    static object Documents(Session s){var docs=new List<object>();foreach(Document d in s.Dte.Documents){if(docs.Count>=200)break;docs.Add(DocumentInfo(d));}var active=s.Dte.ActiveDocument;return Map("documents",docs,"activeDocument",active==null?null:DocumentInfo(active));}
     static object OpenDocument(Session s,Dictionary<string,object> r){string path=Path.GetFullPath(Text(r,"path"));if(!File.Exists(path))throw Error("FILE_NOT_FOUND",path);s.Dte.ItemOperations.OpenFile(path,Constants.vsViewKindTextView);Document document=FindDocument(s,path);var text=document.Object("TextDocument") as TextDocument;if(text!=null){int line=Int(r,"line",1,1,text.EndPoint.Line);int column=Int(r,"column",1,1,1000000);var selection=(TextSelection)document.Selection;selection.MoveToLineAndOffset(line,column,false);}return DocumentInfo(document);}
     static object ReadDocument(Session s,Dictionary<string,object> r){Document d=FindDocument(s,Text(r,"path"));TextDocument text=d.Object("TextDocument") as TextDocument;if(text==null)throw Error("NOT_TEXT_DOCUMENT","Document has no text buffer.");int max=Int(r,"maxChars",64000,1,1048576);string content=ReadText(text);return Map("path",d.FullName,"text",Limit(content,max),"truncated",content.Length>max,"length",content.Length,"saved",d.Saved);}
     static object EditDocument(Session s,Dictionary<string,object> r){RequireDesign(s);Document d=FindDocument(s,Text(r,"path"));if(d.ReadOnly)throw Error("READ_ONLY_DOCUMENT","Document is read-only.");TextDocument text=d.Object("TextDocument") as TextDocument;if(text==null)throw Error("NOT_TEXT_DOCUMENT","Document has no text buffer.");string old=ReadText(text),expected=Text(r,"expectedText"),replacement=Text(r,"text");if(expected==null||replacement==null)throw Error("INVALID_REQUEST","Expected and replacement text are required.");if(old!=expected)throw Error("DOCUMENT_CONFLICT","The IDE buffer differs from expectedText; re-read it before editing.");if(replacement.Length>1048576)throw Error("INVALID_REQUEST","Replacement text exceeds one million characters.");text.StartPoint.CreateEditPoint().ReplaceText(text.EndPoint,replacement,(int)vsEPReplaceTextOptions.vsEPReplaceTextKeepMarkers);if(Bool(r,"save"))d.Save("");return DocumentInfo(d);}
@@ -228,12 +244,18 @@ internal static class Program {
 
     sealed class BuildJob {
         public string Id,Action,Phase,State,StartedUtc,FinishedUtc;public bool Complete;public int? LastBuildInfo;public bool SawBegin;
-        public Dictionary<string,object> Info(){return Map("buildId",Id,"action",Action,"phase",Phase,"state",State,"complete",Complete,"startedAtUtc",StartedUtc,"finishedAtUtc",FinishedUtc,"lastBuildInfo",LastBuildInfo,"beginEventObserved",SawBegin);}
+        public Dictionary<string,object> Info(){return Map("buildId",Id,"action",Action,"phase",Phase,"state",State,"complete",Complete,"terminal",State!="started","startedAtUtc",StartedUtc,"finishedAtUtc",FinishedUtc,"lastBuildInfo",LastBuildInfo,"beginEventObserved",SawBegin);}
+    }
+    sealed class BreakpointRecord {
+        public readonly string Id=Guid.NewGuid().ToString();public readonly Breakpoint Value;public readonly long Identity;public readonly bool Owned;public string OwnershipTag;
+        public BreakpointRecord(Breakpoint value,bool owned){Value=value;Identity=ComIdentity(value);Owned=owned;}
     }
     sealed class Session : IDisposable {
         public readonly string Id=Guid.NewGuid().ToString();public readonly int ProcessId;public readonly long StartTicks;public readonly string StartUtc;public DTE2 Dte;
         public int Sequence,LastDebuggerEventSequence;public readonly List<Dictionary<string,object>> Events=new List<Dictionary<string,object>>();public readonly Dictionary<string,BuildJob> Builds=new Dictionary<string,BuildJob>();public BuildJob ActiveBuild;
-        public readonly Dictionary<string,Breakpoint> Breakpoints=new Dictionary<string,Breakpoint>();
+        public readonly Dictionary<string,BreakpointRecord> Breakpoints=new Dictionary<string,BreakpointRecord>();
+        public const int MaximumBuilds=64;public int EvictedBuilds;
+        readonly Queue<string> BuildOrder=new Queue<string>();
         BuildEvents BuildEvents;DebuggerEvents DebuggerEvents;Mutex Lease;bool Disposed;
         public readonly List<string> CleanupWarnings=new List<string>();
         public Session(int pid,DateTime start,DTE2 dte,Mutex lease){
@@ -244,7 +266,21 @@ internal static class Program {
         public object Info(){return Map("sessionId",Id,"processId",ProcessId,"startTimeUtc",StartUtc,"version",Dte.Version);}
         public void CheckIdentity(){try{using(var p=System.Diagnostics.Process.GetProcessById(ProcessId)){if(p.StartTime.ToUniversalTime().Ticks!=StartTicks)throw Error("TARGET_CHANGED","The selected IDE PID has been reused.");}}catch(ArgumentException){throw Error("IDE_CLOSED","The selected IDE is no longer running.");}}
         public void Event(string kind,Dictionary<string,object> data){data["kind"]=kind;data["sequence"]=++Sequence;data["timestampUtc"]=DateTime.UtcNow.ToString("o");Events.Add(data);if(Events.Count>MaximumEvents)Events.RemoveAt(0);}
-        public string RememberBreakpoint(Breakpoint bp){foreach(var item in Breakpoints){if(object.ReferenceEquals(item.Value,bp))return item.Key;}string id=Guid.NewGuid().ToString();Breakpoints.Add(id,bp);return id;}
+        public void TrackBuild(BuildJob job){
+            while(BuildOrder.Count>=MaximumBuilds){string oldest=BuildOrder.Dequeue();if(ActiveBuild!=null&&oldest==ActiveBuild.Id)throw Error("BUILD_BUSY","Cannot evict an active build.");Builds.Remove(oldest);EvictedBuilds++;}
+            Builds.Add(job.Id,job);BuildOrder.Enqueue(job.Id);
+        }
+        public BreakpointRecord RememberBreakpoint(Breakpoint bp,bool own){
+            long identity=ComIdentity(bp);foreach(var item in Breakpoints.Values)if(item.Identity==identity)return item;
+            var record=new BreakpointRecord(bp,own);
+            if(own){string tag="VS2015MCP:"+Id+":"+record.Id;try{bp.Tag=tag;record.OwnershipTag=tag;}catch(COMException){}}
+            Breakpoints.Add(record.Id,record);return record;
+        }
+        public void DeleteOwnedBreakpoint(BreakpointRecord record){
+            if(!record.Owned)throw Error("BREAKPOINT_NOT_OWNED","The automation session does not own this breakpoint.");
+            if(record.OwnershipTag!=null&&record.Value.Tag!=record.OwnershipTag)throw Error("BREAKPOINT_OWNERSHIP_CHANGED","The breakpoint ownership tag changed; it will be preserved.");
+            record.Value.Delete();
+        }
         bool MatchesBuild(vsBuildScope scope,vsBuildAction action){if(ActiveBuild==null||scope!=vsBuildScope.vsBuildScopeSolution)return false;return (ActiveBuild.Phase=="rebuild"&&action==vsBuildAction.vsBuildActionRebuildAll)||(ActiveBuild.Phase=="clean"&&action==vsBuildAction.vsBuildActionClean)||(ActiveBuild.Phase=="build"&&action==vsBuildAction.vsBuildActionBuild)||(ActiveBuild.Phase=="deploy"&&action==vsBuildAction.vsBuildActionDeploy);}
         void BeginBuild(vsBuildScope scope,vsBuildAction action){if(MatchesBuild(scope,action))ActiveBuild.SawBegin=true;Event("buildBegin",Map("scope",scope.ToString(),"action",action.ToString(),"buildId",ActiveBuild==null?null:ActiveBuild.Id));}
         void DoneBuild(vsBuildScope scope,vsBuildAction action){
@@ -268,6 +304,7 @@ internal static class Program {
         public void Dispose(){
             if(Disposed)return;Disposed=true;
             try {
+                foreach(var record in Breakpoints.Values.Where(x=>x.Owned).ToArray())Cleanup(delegate{DeleteOwnedBreakpoint(record);});
                 Unsubscribe();Breakpoints.Clear();if(Dte!=null){Cleanup(delegate{Marshal.ReleaseComObject(Dte);});Dte=null;}
             } finally {if(Lease!=null){try{Lease.ReleaseMutex();}finally{Lease.Dispose();Lease=null;}}}
         }

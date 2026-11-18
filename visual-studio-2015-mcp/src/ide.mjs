@@ -28,6 +28,8 @@ export const ideDefinitions = [
     schema: z.object({ ...session, action: z.enum(['build', 'rebuild', 'clean', 'deploy']).default('build') }), run: call('buildActive') },
   { name: 'vs2015_build_status', readOnly: true, description: 'Read the selected IDE build operation by buildId. Complete is based on OnBuildDone events, not the return of SolutionBuild.Build. LastBuildInfo is the count of failed projects, not the diagnostic error count.',
     schema: z.object({ ...session, buildId: z.guid() }), run: call('buildStatus') },
+  { name: 'vs2015_build_reconcile', description: 'Explicitly reconcile a stale IDE build record after querying actual BuildState. If the IDE is idle but completion evidence is missing, mark the record unconfirmed and release the automation build lock. Never infer build success or cancel an active IDE build.',
+    schema: z.object({ ...session, buildId: z.guid() }), run: call('buildReconcile') },
   { name: 'vs2015_ide_events', readOnly: true, description: 'Read bounded build/debugger events from the persistent IDE session by sequence cursor. Use actual debugger transitions to observe breakpoint hits and build completion.',
     schema: z.object({ ...session, afterSequence: z.number().int().nonnegative().default(0), limit: z.number().int().min(1).max(500).default(100) }), run: call('events') },
   { name: 'vs2015_documents', readOnly: true, description: 'Enumerate open IDE documents with paths, active document and saved/unsaved state.',
@@ -45,7 +47,7 @@ export const ideDefinitions = [
       limit: z.number().int().min(1).max(500).default(100), paneGuid: text.optional(), maxChars: z.number().int().min(1).max(1000000).default(64000) }), run: call('errorsOutput') },
   { name: 'vs2015_ide_debug_state', readOnly: true, description: 'Read design/run/break mode, debugged processes and the last debugger transition from the selected IDE session.',
     schema: z.object(session), run: call('debugState') },
-  { name: 'vs2015_ide_debug_breakpoints', description: 'List, add or delete IDE breakpoints. Add uses a source file/line or function; deletion requires an ID returned by this session. Does not clear unrelated breakpoints.',
+  { name: 'vs2015_ide_debug_breakpoints', description: 'Observe IDE breakpoints or add session-owned breakpoints by file/line or function. Only owned=true breakpoints can be deleted; listing never grants ownership. Graceful detach removes owned breakpoints and preserves observed developer breakpoints.',
     schema: z.object({ ...session, action: z.enum(['list', 'add', 'delete']).default('list'), file: text.optional(), line: z.number().int().positive().optional(),
       function: text.optional(), breakpointId: z.guid().optional() }).superRefine((value, ctx) => {
         if (value.action === 'add' && !(Boolean(value.file && value.line) !== Boolean(value.function))) ctx.addIssue({ code: 'custom', message: 'Add requires either file+line or function.' });
