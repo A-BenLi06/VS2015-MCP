@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'NativeProcess.psm1')
+Import-Module (Join-Path $PSScriptRoot 'WindowsPaths.psm1')
 
 try {
     $request = [Console]::In.ReadToEnd() | ConvertFrom-Json -AsHashtable
@@ -15,12 +16,13 @@ try {
         $executable = [IO.Path]::GetFullPath($explicitPath)
         if ([IO.Path]::GetFileName($executable) -ine $filenames[$tool]) { throw 'Explicit toolPath must name the selected deployment executable.' }
     } else {
-        $sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Microsoft SDKs/Windows Phone'
+        $sdkRoot = Join-Path (Get-WindowsKnownFolderPath ([Environment+SpecialFolder]::ProgramFilesX86)) 'Microsoft SDKs/Windows Phone'
         $candidates = switch ($tool) {
             'appdeploy' { Join-Path $sdkRoot 'v8.1/Tools/AppDeploy/AppDeployCmd.exe' }
             'xapdeploy' { Join-Path $sdkRoot 'v8.0/Tools/XAP Deployment/XapDeployCmd.exe' }
             'winappdeploy' {
-                $kitRoot = try { Get-ItemPropertyValue 'HKLM:/SOFTWARE/WOW6432Node/Microsoft/Windows Kits/Installed Roots' 'KitsRoot10' } catch { Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10' }
+                $kitRoot = try { Get-ItemPropertyValue 'HKLM:/SOFTWARE/WOW6432Node/Microsoft/Windows Kits/Installed Roots' 'KitsRoot10' } catch { $null }
+                if (-not $kitRoot) { $kitRoot = Join-Path (Get-WindowsKnownFolderPath ([Environment+SpecialFolder]::ProgramFilesX86)) 'Windows Kits/10' }
                 $bin = Join-Path $kitRoot 'bin'
                 # The unversioned tool is shipped by the mobile-era SDK.
                 Join-Path $bin 'x86/WinAppDeployCmd.exe'

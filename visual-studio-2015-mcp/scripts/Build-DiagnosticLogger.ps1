@@ -3,6 +3,7 @@
 param([string]$MsBuildDirectory, [string]$OutputDirectory, [string]$CompilerPath, [string]$VsRoot)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'WindowsPaths.psm1')
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 try {
     if (-not $IsWindows) { throw 'The diagnostic logger must be compiled against Windows .NET Framework and MSBuild 14.' }
@@ -34,7 +35,7 @@ try {
     if (-not (Test-Path -LiteralPath $framework -PathType Leaf)) { throw 'Microsoft.Build.Framework.dll is missing from the selected MSBuild directory.' }
     $frameworkVersion = [Reflection.AssemblyName]::GetAssemblyName($framework).Version
     if ($frameworkVersion.Major -ne 14) { throw 'The diagnostic logger requires Microsoft.Build.Framework assembly version 14.' }
-    if (-not $CompilerPath) { $CompilerPath = Join-Path $env:SystemRoot 'Microsoft.NET/Framework/v4.0.30319/csc.exe' }
+    if (-not $CompilerPath) { $CompilerPath = Join-Path (Get-WindowsKnownFolderPath ([Environment+SpecialFolder]::Windows)) 'Microsoft.NET/Framework/v4.0.30319/csc.exe' }
     $CompilerPath = [IO.Path]::GetFullPath($CompilerPath)
     if (-not (Test-Path -LiteralPath $CompilerPath -PathType Leaf)) { throw 'The .NET Framework C# compiler is not installed.' }
     if (-not $OutputDirectory) { $OutputDirectory = Join-Path ([IO.Path]::GetTempPath()) ('vs2015-mcp-logger/' + [Guid]::NewGuid().ToString('N')) }

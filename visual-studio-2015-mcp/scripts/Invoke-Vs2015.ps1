@@ -9,6 +9,7 @@ $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
 Import-Module (Join-Path $PSScriptRoot 'NativeProcess.psm1')
+Import-Module (Join-Path $PSScriptRoot 'WindowsPaths.psm1')
 
 function Read-RegistryValue([string]$Path, [string]$Name) {
     try { return Get-ItemPropertyValue -LiteralPath $Path -Name $Name -ErrorAction Stop }
@@ -28,7 +29,7 @@ function Get-Installation([string]$ExplicitRoot) {
             if ($sxs) { $candidates.Add(@{ path = $sxs; source = "$hive/VisualStudio/SxS/VS7" }) }
         }
         if ($env:VS140COMNTOOLS) { $candidates.Add(@{ path = (Join-Path $env:VS140COMNTOOLS '../..'); source = 'VS140COMNTOOLS' }) }
-        foreach ($base in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+        foreach ($base in @(Get-WindowsProgramDirectoryPaths)) {
             if ($base) { $candidates.Add(@{ path = (Join-Path $base 'Microsoft Visual Studio 14.0'); source = 'known-folder' }) }
         }
     }
@@ -61,6 +62,7 @@ function Get-DeveloperEnvironment($Installation, [string]$Architecture, [string]
     }
     $environment = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($entry in [Environment]::GetEnvironmentVariables().GetEnumerator()) { $environment[$entry.Key] = [string]$entry.Value }
+    Add-WindowsSetupEnvironmentDefaults $environment
     $environment['VS2015_MCP_SETUP_SCRIPT'] = $setup
     $environment['VS2015_MCP_ARCH'] = $setupArgument
     $environment['VS2015_MCP_SDK'] = $SdkVersion
@@ -70,7 +72,7 @@ function Get-DeveloperEnvironment($Installation, [string]$Architecture, [string]
     [IO.File]::WriteAllText($wrapper, "@echo off`r`ncall `"%VS2015_MCP_SETUP_SCRIPT%`" %VS2015_MCP_ARCH% %VS2015_MCP_STORE% %VS2015_MCP_SDK%`r`nif errorlevel 1 exit /b %errorlevel%`r`necho $marker`r`nset`r`n", [Text.Encoding]::ASCII)
     try {
         $environment['VS2015_MCP_ENV_WRAPPER'] = $wrapper
-        $cmd = Join-Path $env:SystemRoot 'System32/cmd.exe'
+        $cmd = Join-Path (Get-WindowsKnownFolderPath ([Environment+SpecialFolder]::Windows)) 'System32/cmd.exe'
         # CMD has its own quote grammar; the only raw command line is this
         # constant bootstrap. Native tool arguments always use ArgumentList.
         $result = Invoke-CapturedProcess -Executable $cmd -Arguments @() -InternalCommandLine '/d /u /s /c ""%VS2015_MCP_ENV_WRAPPER%""' -Directory $Installation.root -Environment $environment -Encoding ([Text.Encoding]::Unicode) -TimeoutMs $SetupTimeoutMs -Limit 1048576
@@ -134,7 +136,7 @@ function Get-Tools($Installation, $Environment, [string]$Architecture) {
         if ((Split-Path (Split-Path $fromPath) -Leaf) -eq 'amd64') { Add-Tool $map 'msbuild64' $fromPath 14 }
         else { Add-Tool $map 'msbuild' $fromPath 14 }
     }
-    foreach ($base in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+    foreach ($base in @(Get-WindowsProgramDirectoryPaths)) {
         if ($base) {
             Add-Tool $map 'msbuild' (Join-Path $base 'MSBuild/14.0/Bin/MSBuild.exe') 14
             Add-Tool $map 'msbuild64' (Join-Path $base 'MSBuild/14.0/Bin/amd64/MSBuild.exe') 14

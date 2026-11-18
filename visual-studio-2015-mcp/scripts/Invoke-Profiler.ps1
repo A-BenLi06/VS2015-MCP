@@ -8,6 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $script:RequestJson=[Console]::In.ReadToEnd()
 Import-Module (Join-Path $PSScriptRoot 'NativeProcess.psm1')
+Import-Module (Join-Path $PSScriptRoot 'WindowsPaths.psm1')
 
 function Fail([string]$Code, [string]$Message) {
     $exception = [InvalidOperationException]::new($Message)
@@ -46,7 +47,7 @@ function Get-InstallRoots($Request) {
             foreach ($p in @((Read-Registry "$hive/VisualStudio/14.0/Setup/VS" 'ProductDir'), (Read-Registry "$hive/VisualStudio/SxS/VS7" '14.0'))) { if ($p) { $roots.Add((Resolve-FullPath $p)) } }
         }
         if ($env:VS140COMNTOOLS) { $roots.Add((Resolve-FullPath (Join-Path $env:VS140COMNTOOLS '../..'))) }
-        foreach ($p in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) { if ($p) { $roots.Add((Join-Path $p 'Microsoft Visual Studio 14.0')) } }
+        foreach ($p in @(Get-WindowsProgramDirectoryPaths)) { $roots.Add((Join-Path $p 'Microsoft Visual Studio 14.0')) }
     }
     $perfRoots = [Collections.Generic.List[string]]::new()
     $standalone = Read-Text $Request 'performanceRoot'

@@ -1,6 +1,7 @@
 #requires -Version 7.0
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'WindowsPaths.psm1')
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $lease = $null
@@ -60,7 +61,7 @@ try {
         if ($identity.Name -ine [IO.Path]::GetFileNameWithoutExtension($name) -or $identity.Version.Major -ne $expectedMajor) { throw "Unexpected IDE interop identity: $identity" }
         $references.Add($found[0]); $referenceInputs.Add([ordered]@{ name=$name; identity=$identity.FullName; sha256=Get-Sha256 $found[0] })
     }
-    $compilerDirectory = Join-Path $env:SystemRoot 'Microsoft.NET/Framework/v4.0.30319'
+    $compilerDirectory = Join-Path (Get-WindowsKnownFolderPath ([Environment+SpecialFolder]::Windows)) 'Microsoft.NET/Framework/v4.0.30319'
     $compiler = Join-Path $compilerDirectory 'csc.exe'
     if (-not [IO.File]::Exists($compiler)) { throw '.NET Framework 4 compiler is missing.' }
     $sourceDirectory = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../ide-bridge'))

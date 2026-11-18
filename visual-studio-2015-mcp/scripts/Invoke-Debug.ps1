@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'NativeProcess.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'WindowsPaths.psm1')
 
 function Get-PeArchitecture([string]$Path) {
     $stream = [IO.File]::OpenRead($Path)
@@ -47,7 +48,7 @@ function Get-DebugTools($Request) {
     foreach ($root in @(Get-RegistryValues 'SOFTWARE\Microsoft\Windows Kits\Installed Roots' @('KitsRoot', 'KitsRoot81', 'KitsRoot10'))) {
         $null = $roots.Add($root)
     }
-    foreach ($programs in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+    foreach ($programs in @(Get-WindowsProgramDirectoryPaths)) {
         if ($programs) { foreach ($kit in @('8.0', '8.1', '10')) { $null = $roots.Add((Join-Path $programs "Windows Kits/$kit")) } }
     }
     $explicitRoot = Get-Value $Request 'debuggerRoot'
@@ -81,7 +82,7 @@ function Get-DebugTools($Request) {
         if ($env:VS140COMNTOOLS) { $vsRoots.Add([IO.Path]::GetFullPath((Join-Path $env:VS140COMNTOOLS '../..'))) }
         foreach ($root in @(Get-RegistryValues 'SOFTWARE\Microsoft\VisualStudio\SxS\VS7' @('14.0'))) { $vsRoots.Add($root) }
         foreach ($root in @(Get-RegistryValues 'SOFTWARE\Microsoft\VisualStudio\14.0\Setup\VS' @('ProductDir'))) { $vsRoots.Add($root) }
-        if (${env:ProgramFiles(x86)}) { $vsRoots.Add((Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio 14.0')) }
+        foreach ($programs in @(Get-WindowsProgramDirectoryPaths)) { $vsRoots.Add((Join-Path $programs 'Microsoft Visual Studio 14.0')) }
     }
     foreach ($root in $vsRoots) {
         $devenv = Join-Path $root 'Common7/IDE/devenv.exe'
@@ -93,7 +94,7 @@ function Get-DebugTools($Request) {
         if ($explicitVs) { throw 'vsRoot is not a Visual Studio 2015 installation (devenv.exe 14.x required).' }
     }
     foreach ($system in @('System32', 'SysWOW64')) {
-        Add-Candidate $tools 'vsjitdebugger' (Join-Path $env:SystemRoot "$system/vsjitdebugger.exe") 'windows-system' $true
+        Add-Candidate $tools 'vsjitdebugger' (Join-Path (Get-WindowsKnownFolderPath ([Environment+SpecialFolder]::Windows)) "$system/vsjitdebugger.exe") 'windows-system' $true
     }
     $cdb = @($tools | Where-Object { $_.name -eq 'cdb' })
     return [ordered]@{
