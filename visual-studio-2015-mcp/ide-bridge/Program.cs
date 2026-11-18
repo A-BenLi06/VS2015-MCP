@@ -84,6 +84,7 @@ internal static partial class Program {
             case "configureSolution": return ConfigureSolution(s,r);
             case "projectBuild": return StartProjectBuild(s,r);
             case "projectProperties": return ProjectProperties(s,r);
+            case "projectAppIdentity": return ProjectAppIdentity(s,r);
             case "setProjectProperty": return SetProjectProperty(s,r);
             case "openSolution": RequireDesign(s);if(s.Dte.Solution.IsOpen)throw Error("SOLUTION_ALREADY_OPEN","Close or choose another IDE before opening a different solution."); string solution=Path.GetFullPath(Text(r,"path"));if(!File.Exists(solution))throw Error("FILE_NOT_FOUND",solution);s.Dte.Solution.Open(solution);return SolutionStatus(s);
             case "buildActive": return StartBuild(s,r);
@@ -228,7 +229,29 @@ internal static partial class Program {
     static Document FindDocument(Session s,string path){if(path==null)throw Error("INVALID_REQUEST","path is required.");string full=Path.GetFullPath(path);foreach(Document d in s.Dte.Documents){if(string.Equals(d.FullName,full,StringComparison.OrdinalIgnoreCase))return d;}throw Error("DOCUMENT_NOT_OPEN","Open this document in the selected IDE first.");}
     static object DocumentInfo(Document d){return Map("path",d.FullName,"name",d.Name,"saved",d.Saved,"readOnly",d.ReadOnly,"kind",d.Kind,"language",d.Language);}
     static object Documents(Session s){var docs=new List<object>();foreach(Document d in s.Dte.Documents){if(docs.Count>=200)break;docs.Add(DocumentInfo(d));}var active=s.Dte.ActiveDocument;return Map("documents",docs,"activeDocument",active==null?null:DocumentInfo(active));}
-    static object OpenDocument(Session s,Dictionary<string,object> r){string path=Path.GetFullPath(Text(r,"path"));if(!File.Exists(path))throw Error("FILE_NOT_FOUND",path);s.Dte.ItemOperations.OpenFile(path,Constants.vsViewKindTextView);Document document=FindDocument(s,path);var text=document.Object("TextDocument") as TextDocument;if(text!=null){int line=Int(r,"line",1,1,text.EndPoint.Line);int column=Int(r,"column",1,1,1000000);var selection=(TextSelection)document.Selection;selection.MoveToLineAndOffset(line,column,false);}return DocumentInfo(document);}
+    static object OpenDocument(Session s,Dictionary<string,object> r){
+        string path=Path.GetFullPath(Text(r,"path"));if(!File.Exists(path))throw Error("FILE_NOT_FOUND",path);
+        string view=Text(r,"view","text");if(view!="text"&&view!="code")throw Error("INVALID_REQUEST","view must be text or code.");
+        if(Bool(r,"replaceSavedView")){
+            var matches=s.Dte.Documents.Cast<Document>().Where(d=>string.Equals(d.FullName,path,StringComparison.OrdinalIgnoreCase)).ToArray();
+            if(matches.Length>1)throw Error("AMBIGUOUS_DOCUMENT_VIEWS","Multiple documents use this path; select or close their views in the IDE before replacing one.");
+            foreach(var existing in matches){
+                if(!existing.Saved)throw Error("DOCUMENT_UNSAVED_VIEW","The existing editor has unsaved changes; view replacement was not performed.");
+                // Prompt if an external edit races the saved-state observation;
+                // never silently discard changes while changing editor factory.
+                existing.Close(vsSaveChanges.vsSaveChangesPrompt);
+            }
+        }
+        Window opened=s.Dte.ItemOperations.OpenFile(path,view=="code"?Constants.vsViewKindCode:Constants.vsViewKindTextView);
+        Document document=(opened==null?null:opened.Document)??FindDocument(s,path);var text=document.Object("TextDocument") as TextDocument;
+        if(r.ContainsKey("line")||r.ContainsKey("column")){
+            if(text==null)throw Error("NOT_TEXT_DOCUMENT","This editor view has no text buffer for source navigation.");
+            int line=Int(r,"line",1,1,text.EndPoint.Line);int column=Int(r,"column",1,1,1000000);var selection=document.Selection as TextSelection;
+            if(selection==null)throw Error("EDITOR_SELECTION_UNAVAILABLE","The selected editor does not expose a text selection.");
+            selection.MoveToLineAndOffset(line,column,false);
+        }
+        var result=(Dictionary<string,object>)DocumentInfo(document);result["requestedView"]=view;result["textBufferAvailable"]=text!=null;return result;
+    }
     static object ReadDocument(Session s,Dictionary<string,object> r){Document d=FindDocument(s,Text(r,"path"));TextDocument text=d.Object("TextDocument") as TextDocument;if(text==null)throw Error("NOT_TEXT_DOCUMENT","Document has no text buffer.");int max=Int(r,"maxChars",64000,1,1048576);string content=ReadText(text);return Map("path",d.FullName,"text",Limit(content,max),"truncated",content.Length>max,"length",content.Length,"sha256",HashText(content),"saved",d.Saved);}
     static object EditDocument(Session s,Dictionary<string,object> r){RequireDesign(s);Document d=FindDocument(s,Text(r,"path"));if(d.ReadOnly)throw Error("READ_ONLY_DOCUMENT","Document is read-only.");TextDocument text=d.Object("TextDocument") as TextDocument;if(text==null)throw Error("NOT_TEXT_DOCUMENT","Document has no text buffer.");string old=ReadText(text),expected=Text(r,"expectedText"),replacement=Text(r,"text");if(expected==null||replacement==null)throw Error("INVALID_REQUEST","Expected and replacement text are required.");if(old!=expected)throw Error("DOCUMENT_CONFLICT","The IDE buffer differs from expectedText; re-read it before editing.");if(replacement.Length>1048576)throw Error("INVALID_REQUEST","Replacement text exceeds one million characters.");text.StartPoint.CreateEditPoint().ReplaceText(text.EndPoint,replacement,(int)vsEPReplaceTextOptions.vsEPReplaceTextKeepMarkers);if(Bool(r,"save"))d.Save("");return DocumentInfo(d);}
     static object ErrorsOutput(Session s,Dictionary<string,object> r) {

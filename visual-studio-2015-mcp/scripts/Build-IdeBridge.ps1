@@ -68,7 +68,7 @@ try {
     [Array]::Sort($sources, [StringComparer]::Ordinal)
     if (-not $sources.Count) { throw 'IDE bridge sources are missing.' }
     $sourceInputs = @($sources | ForEach-Object { [ordered]@{name=[IO.Path]::GetFileName($_);sha256=Get-Sha256 $_} })
-    $frameworkNames = @('System.dll', 'System.Core.dll', 'Microsoft.CSharp.dll', 'System.Windows.Forms.dll', 'System.Web.Extensions.dll')
+    $frameworkNames = @('System.dll', 'System.Core.dll', 'System.Xml.dll', 'Microsoft.CSharp.dll', 'System.Windows.Forms.dll', 'System.Web.Extensions.dll')
     $compilerInputs = @(@('csc.exe', 'mscorlib.dll') + $frameworkNames + @('csc.exe.config', 'csc.rsp') | ForEach-Object { $file = Join-Path $compilerDirectory $_; if ([IO.File]::Exists($file)) { [ordered]@{name=$_;sha256=Get-Sha256 $file} } })
     $keyInput = [ordered]@{ schemaVersion=1; platform='x86'; target='exe'; optimize=$true; debug=$false; compiler=$compilerInputs; sources=$sourceInputs; references=@($referenceInputs.ToArray()) }
     $keyBytes = [Text.Encoding]::UTF8.GetBytes(($keyInput | ConvertTo-Json -Depth 12 -Compress))

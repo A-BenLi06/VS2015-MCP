@@ -257,3 +257,10 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Fix existing screenshot replacement using atomic File.Replace with a unique same-directory backup, avoiding PS5 null-string overload failure.
 - Validation:17 focused transport/schema/lifecycle tests passed; added invalid endpoint regressions passed. Actual committed WP8.1 runtime passed55seconds with CoreCon binding, competing-controller rejection, existing PNG replacement, reopen and EOF, retaining the same VM. A previous20second cold-open deadline failed; instrumented rerun showed cold CoreCon open14–19.4seconds, so the opt-in test now explicitly budgets60seconds for open. Existing one-shot MCP discovery/deployment-plan integration also passed. Prior actual modifier/EOF test confirmed Control/Shift held-key cleanup.
 
+
+## 2026-11-18T13:10:59+08:00 — Actual included Appx identity and guarded manifest editor views
+
+- Add project_app_identity from recursively included project items, exact schema namespaces and saved byte snapshots. Bound XML size, prohibit DTD/resolution, preserve actual identifiers, reject ambiguous/unsaved manifests and configuration drift. Retain item RCWs during identity enumeration. Namespace declarations use prefix/namespaceUri records compatible with ordinary PowerShell JSON conversion; System.Xml reference bytes enter the bridge cache key.
+- Real Appx designer testing exposed editor switching prompts and absent text buffers. Add explicit text/code view and replaceSavedView options, reject unsaved replacement, use prompt-preserving Close to protect edits racing the saved-state check, and navigate only when positions are requested. No dialogs are automatically answered by the product.
+- Validation:16 parser assertions passed; actual owned UAP manifest identity and unsaved-edit/replacement rejection passed in46seconds, restoring original text and identity. A test-only already-open editor prompt was declined after its exact owned controller was stopped. Original user IDEs and files were preserved.
+

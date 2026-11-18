@@ -20,7 +20,7 @@ v0.3.0 增加常驻 .NET Framework x86 STA 桥接，通过 EnvDTE / EnvDTE80 操
 | 工具 | 行为 |
 |---|---|
 | `vs2015_documents` | 列举打开的文档及 saved/readOnly 状态 |
-| `vs2015_document_open` | 在 IDE 打开文件并定位到 1 起始行列 |
+| `vs2015_document_open` | 显式选择 text/code 视图；可按请求替换已保存视图，并定位到 1 起始行列 |
 | `vs2015_document_read` | 读取 IDE 文本缓冲区，包含未保存编辑；检查 truncated |
 | `vs2015_document_replace` | 使用精确 expectedText 进行整文档冲突检查后替换；默认不保存 |
 | `vs2015_document_save` | 保存指定文档到原路径 |
@@ -35,6 +35,10 @@ v0.3.0 增加常驻 .NET Framework x86 STA 桥接，通过 EnvDTE / EnvDTE80 操
 SolutionBuild 没有 Rebuild 方法，因此 rebuild 调用固定的 IDE 标准命令 `Build.RebuildSolution`，并等待 RebuildAll 事件。其他构建动作直接调用 SolutionBuild。接口不接受任意 ExecuteCommand 文本。已有构建会收到 `BUILD_BUSY`。Error List 是当前 IDE 视图，可能含设计期错误；与外部 MSBuild 的结构化诊断来源不同。Output pane 的名称保留本机语言，选择应使用枚举结果中的 GUID。部分第三方 pane 不提供可读文本。
 
 `vs2015_project_properties` 未指定 `propertyName` 时只列出实际属性名称和索引信息（`valueRead:false`），再按明确名称读取所需值。VS2015 的部分旧项目属性 getter 会直接导致 IDE 崩溃，进程外异常处理无法保护这种调用；枚举不批量执行这些 getter。即使显式读取，也应先确认该项目系统支持此属性。
+
+`vs2015_project_app_identity` 从所选项目实际包含的 Appx 清单读取包、PhoneProductId 和 Application Id，返回原始命名空间、保存字节的 SHA-256 及配置标识。多个清单需明确选择；未保存清单会被拒绝。它证明项目身份来源，部署与客体运行身份需分别确认。
+
+清单设计器可能不提供 TextDocument。要读取或编辑 XML，可明确调用 `document_open` 的 `view:"code", replaceSavedView:true`；已保存视图关闭后按标准 IDE Code 视图重开。未保存文档不会被替换；外部编辑导致保存状态变化时，IDE 仍可显示确认，本工具不会自动应答。未请求行列时保留原选择，不强制移动光标。
 
 ## 持续调试工作流
 
