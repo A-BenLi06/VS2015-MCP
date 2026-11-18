@@ -30,7 +30,7 @@ internal static partial class Program {
         Console.InputEncoding = new UTF8Encoding(false); Console.OutputEncoding = new UTF8Encoding(false);
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         MessageFilter filter = new MessageFilter(delegate { return Deadline; });
-        IOleMessageFilter previous; CoRegisterMessageFilter(filter, out previous);
+        IOleMessageFilter previous; Marshal.ThrowExceptionForHR(CoRegisterMessageFilter(filter, out previous));
         System.Threading.Thread reader = new System.Threading.Thread(delegate() {
             try { string line; while ((line = Console.ReadLine()) != null) { if (line.Length > 8388608) line = "{}"; Input.Enqueue(line); } }
             catch { } finally { Ended = true; }
@@ -60,7 +60,7 @@ internal static partial class Program {
                 Sessions.Clear(); Pump.Stop(); Application.ExitThread();
             }
         };
-        Pump.Start(); Application.Run(); IOleMessageFilter ignored; CoRegisterMessageFilter(previous,out ignored); return 0;
+        Pump.Start(); Write(Map("kind","ready","protocolVersion",1)); Application.Run(); IOleMessageFilter ignored; CoRegisterMessageFilter(previous,out ignored); return 0;
     }
     static void Write(object value) { Console.WriteLine(Json.Serialize(value)); Console.Out.Flush(); }
     static Dictionary<string,object> Map(params object[] pairs) { var map = new Dictionary<string,object>(); for (int i=0;i<pairs.Length;i+=2) map[(string)pairs[i]]=pairs[i+1]; return map; }

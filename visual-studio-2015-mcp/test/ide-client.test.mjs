@@ -8,11 +8,14 @@ import { IdeBridgeClient } from '../src/ide-client.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function fixture(options = {}) {
+  const { launchDelayMs = 0, readyDelayMs = 0, readyMode = 'normal', ...clientOptions } = options;
   const root = await mkdtemp(path.join(os.tmpdir(), 'vs-ide-transport-'));
   const script = path.join(root, 'bridge.mjs'), log = path.join(root, 'calls.jsonl');
   await writeFile(script, `import readline from 'node:readline';
 import {appendFileSync} from 'node:fs';
 const lines=readline.createInterface({input:process.stdin});
+const announce=()=>{if(process.argv[4]==='invalid'){process.stdout.write('{"kind":"wrong"}\\n');return;}if(process.argv[4]==='exit'){process.exit(7);return;}if(process.argv[4]==='never')return;process.stdout.write('{"kind":"ready","protocolVersion":1}\\n');};
+setTimeout(announce,Number(process.argv[3]));
 lines.on('line',async line=>{const r=JSON.parse(line);appendFileSync(process.argv[2],JSON.stringify({id:r.id,operation:r.operation,pid:process.pid})+'\\n');
 if(r.operation==='crash'){process.exit(4);return;}
 if(r.operation==='hang')return;
@@ -22,14 +25,15 @@ if(r.operation==='oversized'){process.stdout.write('x'.repeat(2048));return;}
 if(r.delayMs)await new Promise(resolve=>setTimeout(resolve,r.delayMs));
 process.stdout.write(JSON.stringify({id:r.id,result:{pid:process.pid,operation:r.operation,sessionId:String(process.pid)}})+'\\n');
 });lines.on('close',()=>process.exit(0));`);
-  let launches = 0;
+  let launches = 0; const children = [];
   const client = new IdeBridgeClient({ launch: async () => {
-    launches++; return spawn(process.execPath, [script, log], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-  }, ...options });
+    launches++; await delay(typeof launchDelayMs === 'function' ? launchDelayMs(launches) : launchDelayMs);
+    const child = spawn(process.execPath, [script, log, String(readyDelayMs), readyMode], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); children.push(child); return child;
+  }, ...clientOptions });
   const calls = async () => (await readFile(log, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; }))
     .trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
   const until = async predicate => { const end = Date.now() + 5000; while (!(await predicate())) { if (Date.now() > end) throw new Error('Fixture condition timed out'); await delay(10); } };
-  return { client, calls, until, launches: () => launches };
+  return { client, calls, until, children, launches: () => launches };
 }
 
 test('IDE transport keeps one bridge and skips cancelled queued commands', async () => {
@@ -95,4 +99,67 @@ test('stop releases the bridge and rejects subsequent requests', async () => {
   await f.client.stop();
   assert.notEqual(child.exitCode, null);
   await assert.rejects(f.client.request('later'), { code: 'IDE_BRIDGE_CLOSED' });
+});
+
+test('cold initialization has a separate budget from queue and command execution', async () => {
+  const f = await fixture({ launchDelayMs: 300, readyDelayMs: 300, initializationTimeoutMs: 3000 });
+  try {
+    const start = Date.now();
+    const first = f.client.request('cold', {}, { timeoutMs: 400 });
+    const queued = f.client.request('also-cold', {}, { timeoutMs: 400 });
+    const [a, b] = await Promise.all([first, queued]);
+    assert.ok(Date.now() - start >= 600);
+    assert.equal(a.pid, b.pid); assert.equal(f.launches(), 1);
+  } finally { await f.client.stop(); }
+});
+
+test('initialization timeout rejects undispatched commands and kills late launch results', async () => {
+  const f = await fixture({ launchDelayMs: n => n === 1 ? 1800 : 0, initializationTimeoutMs: 1200 });
+  try {
+    const first = f.client.request('must-not-run').catch(error => error);
+    const queued = f.client.request('also-must-not-run').catch(error => error);
+    assert.equal((await first).code, 'IDE_INITIALIZATION_TIMEOUT');
+    assert.equal((await queued).code, 'IDE_INITIALIZATION_TIMEOUT');
+    await delay(800);
+    await f.until(() => f.children[0] && (f.children[0].exitCode !== null || f.children[0].signalCode !== null));
+    assert.deepEqual(await f.calls(), []);
+    assert.equal((await f.client.request('healthy')).operation, 'healthy');
+    assert.equal(f.launches(), 2);
+  } finally { await f.client.stop(); }
+});
+
+test('STA readiness failure never dispatches an IDE command', async () => {
+  for (const [readyMode, expected] of [['invalid', 'IDE_PROTOCOL_ERROR'], ['exit', 'IDE_BRIDGE_RESET'], ['never', 'IDE_INITIALIZATION_TIMEOUT']]) {
+    const f = await fixture({ readyMode, initializationTimeoutMs: 2000 });
+    try {
+      const error = await f.client.request('must-not-run').catch(value => value);
+      assert.equal(error.code, expected);
+      assert.deepEqual(await f.calls(), []);
+      await f.until(() => f.children[0] && (f.children[0].exitCode !== null || f.children[0].signalCode !== null));
+    } finally { await f.client.stop(); }
+  }
+});
+
+test('cancellation during initialization never dispatches the cancelled request', async () => {
+  const f = await fixture({ launchDelayMs: 250, initializationTimeoutMs: 2000 });
+  try {
+    const abort = new AbortController();
+    const pending = f.client.request('cancel-before-ready', {}, { signal: abort.signal, timeoutMs: 100 }).catch(error => error);
+    await delay(50); abort.abort();
+    assert.equal((await pending).operationMayContinue, false);
+    assert.equal((await f.client.request('state', {}, { timeoutMs: 500 })).operation, 'state');
+    assert.deepEqual((await f.calls()).map(item => item.operation), ['state']);
+  } finally { await f.client.stop(); }
+});
+
+test('connection shutdown during initialization is bounded and late children are not orphaned', async () => {
+  const f = await fixture({ launchDelayMs: 300, initializationTimeoutMs: 5000 });
+  const pending = f.client.request('must-not-run').catch(error => error);
+  await delay(30);
+  const start = Date.now(); await f.client.stop();
+  assert.ok(Date.now() - start < 1000);
+  assert.equal((await pending).code, 'IDE_BRIDGE_CLOSED');
+  await delay(350);
+  await f.until(() => f.children[0] && (f.children[0].exitCode !== null || f.children[0].signalCode !== null));
+  assert.deepEqual(await f.calls(), []);
 });

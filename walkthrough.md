@@ -187,3 +187,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-18T11:53:52+08:00 — 项目系统配置与递归发现
 新增独立ProjectSystem partial，递归发现Solution Folder中的真实项目，返回活动配置/平台/启动项目和configurationToken。新增受token与expectedValue保护的配置/启动项目/项目属性设置；从实际属性发现调试目标，未硬编码通用手机属性。新增项目级BuildProject/DeployProject入口并记录配置/平台、项目scope和唯一名。验证：真实TEMP嵌套Library被发现，Release→Debug切换与过期token拒绝、folder不能作启动项目、StartArguments精确值冲突/恢复、nested project-scope构建事件完整成功。实机MCP回归通过；项目级部署待手机实际事件验证，未据编译结果宣称部署通过。
 
+
+## 2026-11-18T11:57:45+08:00 — 冷启动期限与内容寻址缓存
+将编译/进程启动/STA ready握手与具体请求计时分离，默认初始化120秒，排队/操作预算在ready后开始；初始化取消不分发、迟到子进程只清理桥接。编译器按全部partial源码、引用、Framework编译器/支持文件hash缓存，互斥并发写入、原子发布，复用前校验产物清单和hash，损坏明确拒绝。增加EnvDTE90a实际9.x引用，为源码帧导航提供能力；错误码保留。验证10项真实子进程回归通过，实际并发缓存/源码失效/篡改拒绝集成通过；真实MCP配置/嵌套构建流程在新ready协议下通过。
+
