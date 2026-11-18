@@ -179,3 +179,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-18T11:45:20+08:00 — IDE可靠性：断点所有权与构建协调
 断点改为observed/owned分离并以COM身份跟踪，列举不授予所有权，普通删除拒绝用户断点；优雅detach/EOF清理本会话owned断点并校验辅助Tag。Add前保留实际断点身份，防止将返回的旧断点认领。新增buildReconcile只在IDE实际idle时将丢完成证据的active记录标unconfirmed并释放自动化锁，不猜成功、不停止构建。构建历史限制64条并报告淘汰数量；documents返回activeDocument。验证：专用IDE PID65284中disabled手动断点不能删且detach后保留，新建owned断点被清理；真实idle状态harness验证70条记录保留64/淘汰6、协调不伪造成功；旧完整MCP编辑/重建/断点/变量/单步流程通过。
 
+
+## 2026-11-18T11:47:35+08:00 — 用户断点保护的可重复实机测试
+新增受owned-instance身份约束的真实桥接回归及独立STA手动断点helper：观察不授权、拒绝删除用户断点、相同位置Add先拒绝避免改变disabled设置、detach/EOF自动清自己断点。状态harness使用真实idle IDE和测试自身内存账本验证丢事件协调及64条上限，无产品testhook。全部实机通过；只改专用TEMP fixture，手动测试断点已删除。
+

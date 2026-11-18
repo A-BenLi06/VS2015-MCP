@@ -194,7 +194,7 @@ internal static partial class Program {
         string action=Text(r,"action","list");
         if(action=="add") {
             RequireDesignOrBreak(s);string file=Text(r,"file"),function=Text(r,"function");if(string.IsNullOrWhiteSpace(file)==string.IsNullOrWhiteSpace(function))throw Error("INVALID_REQUEST","Specify exactly one file or function.");
-            var before=new HashSet<long>();foreach(Breakpoint existing in s.Dte.Debugger.Breakpoints)before.Add(ComIdentity(existing));
+            var before=new HashSet<long>();foreach(Breakpoint existing in s.Dte.Debugger.Breakpoints){before.Add(ComIdentity(existing));bool same=file!=null?string.Equals(existing.File,Path.GetFullPath(file),StringComparison.OrdinalIgnoreCase)&&existing.FileLine==Int(r,"line",1,1,int.MaxValue):string.Equals(existing.FunctionName,function,StringComparison.Ordinal);if(same)throw Error("BREAKPOINT_LOCATION_EXISTS","A breakpoint already exists at that location. Observe it without modifying or taking ownership of it.");}
             var added=s.Dte.Debugger.Breakpoints.Add(function??"",file==null?"":Path.GetFullPath(file),Int(r,"line",1,1,int.MaxValue),1,"",dbgBreakpointConditionType.dbgBreakpointConditionTypeWhenTrue,"","",0,"",0,dbgHitCountType.dbgHitCountTypeNone);
             foreach(Breakpoint bp in added)s.RememberBreakpoint(bp,!before.Contains(ComIdentity(bp)));
         } else if(action=="delete") {
