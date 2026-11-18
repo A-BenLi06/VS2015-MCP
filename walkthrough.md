@@ -225,3 +225,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Validate paused thread/frame and execution epoch before returning inspections/evaluations. If a context changes during a read, return DEBUG_CONTEXT_CHANGED; debug_wait polls a fresh read without replaying go/step. Threads without a stack frame remain valid observations.
 - Validation: owned desktop thread/caller-frame navigation and stale-after-step regression passed, including repeated pause consistency checks; actual WP8.1 program identity probe and generic XAML snapshots confirmed the transport key stays stable. All 37 environment-independent tests passed.
 
+
+## 2026-11-18T12:21:29+08:00 — Reproducible Windows Phone 8.1 fixture
+
+- Add an opt-in PowerShell 7 fixture generator using the installed official WinRT Blank Application template discovered by TemplateID. It preserves template resource mappings, uses fresh project/product GUIDs, refuses existing directories, and emits source/line/package metadata for real deployment and debugger tests.
+- Validation: the committed generator built a new x86 AppX with MSBuild 14, zero warnings/errors. A separate owned fixture already completed MCP deployment, touch, guest breakpoint, locals21/42, step and Result42 screenshot; automated test integration follows with the same ownership guards.
+
