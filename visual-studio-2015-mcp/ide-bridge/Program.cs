@@ -94,7 +94,9 @@ internal static partial class Program {
             case "breakpoints": return Breakpoints(s,r);
             case "debugControl": return DebugControl(s,r);
             case "debugInspect": return DebugInspect(s,r);
-            case "evaluate": RequireBreak(s);return Expression(s.Dte.Debugger.GetExpression(Text(r,"expression"),false,Int(r,"expressionTimeoutMs",1000,100,10000)));
+            case "selectThread": return SelectThread(s,r);
+            case "selectFrame": return SelectFrame(s,r);
+            case "evaluate": return EvaluateInContext(s,r);
             case "documents": return Documents(s);
             case "openDocument": return OpenDocument(s,r);
             case "readDocument": return ReadDocument(s,r);
@@ -189,7 +191,7 @@ internal static partial class Program {
         var info=job.Info();info["reconciled"]=reconciled;info["ideBuildState"]=actual.ToString();info["outcomeKnown"]=job.Complete;return info;
     }
     static string Mode(dbgDebugMode mode) {return mode==dbgDebugMode.dbgBreakMode?"break":mode==dbgDebugMode.dbgRunMode?"run":"design";}
-    static object DebugState(Session s) {var debugger=s.Dte.Debugger;var processes=new List<object>();foreach(EnvDTE.Process process in debugger.DebuggedProcesses){if(processes.Count>=100)break;processes.Add(Map("processId",process.ProcessID,"name",process.Name));}return Map("mode",Mode(debugger.CurrentMode),"modeValue",(int)debugger.CurrentMode,"reason",debugger.LastBreakReason.ToString(),"processes",processes,"lastSequence",s.Sequence,"lastDebuggerEventSequence",s.LastDebuggerEventSequence);}
+    static object DebugState(Session s){return DebugStateContext(s);}
     static object Breakpoints(Session s,Dictionary<string,object> r) {
         string action=Text(r,"action","list");
         if(action=="add") {
@@ -219,14 +221,7 @@ internal static partial class Program {
         }
         return Map("issued",true,"action",action,"afterSequence",afterSequence,"note","Query debugState or wait for events to confirm the resulting mode.");
     }
-    static object DebugInspect(Session s,Dictionary<string,object> r) {
-        RequireBreak(s);string kind=Text(r,"kind","frames");int limit=Int(r,"limit",50,1,200);var rows=new List<object>();
-        if(kind=="threads") {foreach(EnvDTE.Thread t in s.Dte.Debugger.CurrentProgram.Threads){if(rows.Count>=limit)break;rows.Add(Map("id",t.ID,"name",t.Name,"program",t.Program.Name));}}
-        else if(kind=="frames") {foreach(EnvDTE.StackFrame frame in s.Dte.Debugger.CurrentThread.StackFrames){if(rows.Count>=limit)break;rows.Add(Map("function",frame.FunctionName,"language",frame.Language,"module",frame.Module));}}
-        else if(kind=="locals") {foreach(EnvDTE.Expression expression in s.Dte.Debugger.CurrentStackFrame.Locals){if(rows.Count>=limit)break;rows.Add(Expression(expression));}}
-        else throw Error("INVALID_REQUEST","Unsupported debug inspection kind.");
-        return Map("kind",kind,"items",rows,"limit",limit);
-    }
+    static object DebugInspect(Session s,Dictionary<string,object> r){return InspectContext(s,r);}
     static object Expression(EnvDTE.Expression value){return Map("name",value.Name,"type",value.Type,"value",Limit(value.Value,16384),"isValidValue",value.IsValidValue,"valueTruncated",(value.Value??"").Length>16384);}
     static string ReadText(TextDocument text){return text.EndPoint.AtStartOfDocument ? "" : text.StartPoint.CreateEditPoint().GetText(text.EndPoint);}
     static Document FindDocument(Session s,string path){if(path==null)throw Error("INVALID_REQUEST","path is required.");string full=Path.GetFullPath(path);foreach(Document d in s.Dte.Documents){if(string.Equals(d.FullName,full,StringComparison.OrdinalIgnoreCase))return d;}throw Error("DOCUMENT_NOT_OPEN","Open this document in the selected IDE first.");}
@@ -250,7 +245,7 @@ internal static partial class Program {
         public readonly string Id=Guid.NewGuid().ToString();public readonly Breakpoint Value;public readonly long Identity;public readonly bool Owned;public string OwnershipTag;
         public BreakpointRecord(Breakpoint value,bool owned){Value=value;Identity=ComIdentity(value);Owned=owned;}
     }
-    sealed class Session : IDisposable {
+    sealed partial class Session : IDisposable {
         public readonly string Id=Guid.NewGuid().ToString();public readonly int ProcessId;public readonly long StartTicks;public readonly string StartUtc;public DTE2 Dte;
         public int Sequence,LastDebuggerEventSequence;public readonly List<Dictionary<string,object>> Events=new List<Dictionary<string,object>>();public readonly Dictionary<string,BuildJob> Builds=new Dictionary<string,BuildJob>();public BuildJob ActiveBuild;
         public readonly Dictionary<string,BreakpointRecord> Breakpoints=new Dictionary<string,BreakpointRecord>();
@@ -293,9 +288,9 @@ internal static partial class Program {
             int info=Dte.Solution.SolutionBuild.LastBuildInfo;job.LastBuildInfo=info;
             job.Complete=true;job.State=info==0?"succeeded":"failed";job.FinishedUtc=DateTime.UtcNow.ToString("o");ActiveBuild=null;
         }
-        void EnterBreak(dbgEventReason reason,ref dbgExecutionAction action){Event("debugBreak",Map("reason",reason.ToString()));LastDebuggerEventSequence=Sequence;}
-        void EnterRun(dbgEventReason reason){Event("debugRun",Map("reason",reason.ToString()));LastDebuggerEventSequence=Sequence;}
-        void EnterDesign(dbgEventReason reason){Event("debugDesign",Map("reason",reason.ToString()));LastDebuggerEventSequence=Sequence;}
+        void EnterBreak(dbgEventReason reason,ref dbgExecutionAction action){BeginPause();Event("debugBreak",Map("reason",reason.ToString()));LastDebuggerEventSequence=Sequence;}
+        void EnterRun(dbgEventReason reason){InvalidatePause();Event("debugRun",Map("reason",reason.ToString()));LastDebuggerEventSequence=Sequence;}
+        void EnterDesign(dbgEventReason reason){InvalidatePause();Event("debugDesign",Map("reason",reason.ToString()));LastDebuggerEventSequence=Sequence;}
         void Cleanup(Action action){try{action();}catch(Exception error){CleanupWarnings.Add(error.Message);}}
         void Unsubscribe(){
             if(BuildEvents!=null){Cleanup(delegate{BuildEvents.OnBuildBegin-=BeginBuild;});Cleanup(delegate{BuildEvents.OnBuildDone-=DoneBuild;});Cleanup(delegate{Marshal.ReleaseComObject(BuildEvents);});BuildEvents=null;}
@@ -305,7 +300,7 @@ internal static partial class Program {
             if(Disposed)return;Disposed=true;
             try {
                 foreach(var record in Breakpoints.Values.Where(x=>x.Owned).ToArray())Cleanup(delegate{DeleteOwnedBreakpoint(record);});
-                Unsubscribe();Breakpoints.Clear();if(Dte!=null){Cleanup(delegate{Marshal.ReleaseComObject(Dte);});Dte=null;}
+                InvalidatePause();Unsubscribe();Breakpoints.Clear();if(Dte!=null){Cleanup(delegate{Marshal.ReleaseComObject(Dte);});Dte=null;}
             } finally {if(Lease!=null){try{Lease.ReleaseMutex();}finally{Lease.Dispose();Lease=null;}}}
         }
     }

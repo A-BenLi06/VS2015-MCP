@@ -191,3 +191,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-18T11:57:45+08:00 — 冷启动期限与内容寻址缓存
 将编译/进程启动/STA ready握手与具体请求计时分离，默认初始化120秒，排队/操作预算在ready后开始；初始化取消不分发、迟到子进程只清理桥接。编译器按全部partial源码、引用、Framework编译器/支持文件hash缓存，互斥并发写入、原子发布，复用前校验产物清单和hash，损坏明确拒绝。增加EnvDTE90a实际9.x引用，为源码帧导航提供能力；错误码保留。验证10项真实子进程回归通过，实际并发缓存/源码失效/篡改拒绝集成通过；真实MCP配置/嵌套构建流程在新ready协议下通过。
 
+
+## 2026-11-18T11:59:42+08:00 — 暂停上下文与源码帧导航
+新增独立DebugNavigation partial，使用EnvDTE90a StackFrame2取得源码文件、行和Depth；线程/帧ID与pauseId及debugprogram绑定，恢复执行、新断点或切program时作废。新增显式select_thread/select_frame，locals/evaluate可验证预期暂停/帧；Locals2(false)避免隐式属性展开。验证：真实MCP在Compute返回行16定位源码/depth1，切换另一线程并还原，选择caller Main8/depth2读input21，再选择Compute读result42；单步后旧pause/frame拒绝，测试通过并清理owned断点。
+
