@@ -115,7 +115,10 @@ internal static partial class Program {
         var active=(SolutionConfiguration2)s.Dte.Solution.SolutionBuild.ActiveConfiguration;
         var job=new BuildJob{Id=Guid.NewGuid().ToString(),Action=action,Phase=action,State="started",StartedUtc=DateTime.UtcNow.ToString("o"),ProjectUniqueName=project.UniqueName,ExpectedScope=vsBuildScope.vsBuildScopeProject,Configuration=active.Name,Platform=active.PlatformName};
         s.TrackBuild(job);s.ActiveBuild=job;
-        try{if(action=="build")s.Dte.Solution.SolutionBuild.BuildProject(active.Name,project.UniqueName,false);else ((SolutionBuild2)s.Dte.Solution.SolutionBuild).DeployProject(active.Name,project.UniqueName,false);}
+        // Name alone is ambiguous across solution platforms: VS2015 can resolve
+        // Debug to Any CPU even while the active phone configuration is x86.
+        string configuration=active.Name+"|"+active.PlatformName;
+        try{if(action=="build")s.Dte.Solution.SolutionBuild.BuildProject(configuration,project.UniqueName,false);else ((SolutionBuild2)s.Dte.Solution.SolutionBuild).DeployProject(configuration,project.UniqueName,false);}
         catch{job.State="start-failed";job.Complete=false;s.ActiveBuild=null;throw;}
         return job.Info();
     }

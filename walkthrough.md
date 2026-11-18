@@ -205,3 +205,10 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Accept the observed WP8.1 solution deployment preparation sequence (Build begin, Deploy done), while requiring the final matching Deploy event to confirm completion. A preparatory Build done alone keeps deployment pending and explicit reconciliation records an unconfirmed outcome.
 - Validation: real WP8.1 solution deployment completed with LastBuildInfo=0; the owned IDE reliability integration passed, including missing-Deploy rejection, manual breakpoint preservation and bounded build history.
 
+
+## 2026-11-18T12:13:35+08:00 — Preserve solution platform in project build/deploy
+
+- Pass the complete configuration|platform identifier to IDE BuildProject and DeployProject. The VS2015 phone project previously resolved the unqualified Debug name to Any CPU despite active x86, causing DEP1700 against a nonexistent recipe path.
+- Validation: owned nested desktop project build integration passed. On the dedicated WP8.1 VM, MCP solution deployment and project deployment both reached matching completion events with LastBuildInfo=0; raw events confirm Debug|x86.
+- Reference: Microsoft SolutionBuild.BuildProject documents the solution-configuration context and mandatory OnBuildDone completion; the full platform qualifier was verified on installed VS2015 Update 3 rather than inferred from method return.
+
