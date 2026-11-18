@@ -249,3 +249,11 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Extend the owned-phone regression to separate explicit WP8.1 and Win10M context variables, with the same build/deploy/debug/context/cleanup assertions and target-specific observed coordinates. No emulator is chosen by list order or shared display name.
 - Validation: Windows 10 Mobile14393 dedicated WXGA guest passed in40seconds through real MCP: build, both deployment scopes, touch, exact guest breakpoint, locals21/42, repeated stable frame snapshots, StepOver, stale rejection, resume and PNG capture, clean stop/detach. Evidence: TEMP/vs2015-win10m-aa46b0dade2c4cc1960ec534f96cc0df/runtime-Cf2sst. WP8.1 counterpart already passed47seconds.
 
+
+## 2026-11-18T12:40:01+08:00 — Persistent phone transport, input ownership and independent SDK target evidence
+
+- Extract shared XDE/CoreCon functions and add an x86 PS5.1 STA JSON-lines controller plus bounded Node transport. Cache one input client per owned target; retain Press keys across requests and release only owned keys on close/EOF. SDK assembly identity+SHA allows identical GAC resolution while rejecting SDK mixing. Graceful cleanup never closes the VM; forced termination reports unknown cleanup.
+- Bind expected XDE PID/start and actual Hyper-V GUID on every operation. Use a VM-GUID-scoped mutex across persistent and one-shot input/stop controllers. Optional exact CoreCon GUID+locale binding compares both parsed SDK host/guest addresses; reject zero/loopback addresses and disconnect only connections established by this bridge.
+- Fix existing screenshot replacement using atomic File.Replace with a unique same-directory backup, avoiding PS5 null-string overload failure.
+- Validation:17 focused transport/schema/lifecycle tests passed; added invalid endpoint regressions passed. Actual committed WP8.1 runtime passed55seconds with CoreCon binding, competing-controller rejection, existing PNG replacement, reopen and EOF, retaining the same VM. A previous20second cold-open deadline failed; instrumented rerun showed cold CoreCon open14–19.4seconds, so the opt-in test now explicitly budgets60seconds for open. Existing one-shot MCP discovery/deployment-plan integration also passed. Prior actual modifier/EOF test confirmed Control/Shift held-key cleanup.
+
