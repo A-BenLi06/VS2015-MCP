@@ -271,3 +271,11 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Give Go a default120-second command budget for cold CoreCon launch while preserving explicit caller limits and ordinary command budgets.
 - Validation:29 production contract/comparator assertions passed; actual owned UAP fixture rejected wrong configuration, manifest fingerprint, app ID, device and property guards without leaving design mode. All5 schema/runtime tests passed; no valid Go was issued by this negative-path suite.
 
+
+## 2026-11-18T13:29:57+08:00 — Unified MCP PhoneSession orchestration
+
+- Expose seven phone_session tools with a dedicated persistent SDK controller per VM, exact100ns PID/start/GUID identity, CoreCon locale/address-pair proof and optional actual IDE/project/manifest binding. Serialize validation and dispatch, bound session/queue counts, refuse implicit reconnect/replay and keep cleanup independent of borrowed IDE availability.
+- Route allowlisted IDE operations through the bound session and original schema. Server-construct the same-STA Go guard; reject target overrides or old schemas that strip it. Recheck discovered emulator/simulator routing fields, merge identical explicit/inferred guards, reject conflicts/excess before SDK connection. Application verification is explicitly project-only until actual guest identity is observed.
+- Wire graceful EOF cleanup into MCP server shutdown, release held keys and leave IDE/VM running.
+- Validation:38 manager tests passed plus existing schema/PS lifecycle suites (41 focused tests before two additional guard-composition regressions). Actual Win10M public MCP integration passed51seconds: open/status/endpoints/proxy/PNG/close, exact binding evidence and continued use of the original borrowed IDE session. Two-platform concurrent real validation is continuing separately; no Go or guest input was sent by this read-only test.
+

@@ -11,15 +11,19 @@ import { debugDefinitions } from './debug.mjs';
 import { profilerDefinitions } from './profiler.mjs';
 import { ideDefinitions } from './ide.mjs';
 import { stopIdeBridge } from './ide-client.mjs';
+import { createPhoneSessionTools } from './phone-session.mjs';
+
+let phoneSessions;
 
 serveStdio(() => {
   const server = new McpServer({ name: 'visual-studio-2015', version: '0.3.0' });
+  phoneSessions = createPhoneSessionTools();
   for (const name of ['cli-guide', 'phone-guide', 'diagnostics-performance', 'debug-guide', 'mobile-performance', 'ide-guide']) {
     server.registerResource(name, `vs2015://${name}`, { mimeType: 'text/markdown' }, async uri => ({
       contents: [{ uri: uri.href, mimeType: 'text/markdown', text: await readFile(new URL(`../docs/${name}.md`, import.meta.url), 'utf8') }],
     }));
   }
-  const catalog = [...definitions, ...phoneDefinitions, ...observabilityDefinitions, ...diagnosticDefinitions, ...debugDefinitions, ...profilerDefinitions, ...ideDefinitions];
+  const catalog = [...definitions, ...phoneDefinitions, ...phoneSessions.definitions, ...observabilityDefinitions, ...diagnosticDefinitions, ...debugDefinitions, ...profilerDefinitions, ...ideDefinitions];
   for (const tool of [...catalog, recordingTool(catalog)]) {
     server.registerTool(tool.name, {
       description: tool.description, inputSchema: tool.schema,
@@ -34,7 +38,7 @@ serveStdio(() => {
   }
   return server;
 });
-const stop = () => Promise.allSettled([stopChildren(), stopIdeBridge()]);
+const stop = () => Promise.allSettled([stopChildren(), stopIdeBridge(), phoneSessions?.stop()]);
 process.stdin.on('end', stop);
 for (const event of ['SIGINT', 'SIGTERM']) process.on(event, async () => { await stop(); process.exit(0); });
 process.on('exit', stop);
