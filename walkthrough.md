@@ -285,3 +285,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Reproduce legacy screenshot failure with optional OS-directory environment variables omitted: XDE discovery called Join-Path with null ProgramFiles(x86) before reaching CaptureImage. Use Environment.SpecialFolder for ProgramFilesX86/Windows across shared XDE/tool/CoreCon discovery; preserve explicit custom roots and existing one-shot envelopes.
 - Validation: known-folder unit test passed with directory variables removed. Actual original MCP legacy discovery/status/inline screenshot and existing PNG replacement passed2 tests in20seconds under that minimal environment. Capture evidence is unique TEMP/vs-phone-minimal-env-IgRUQu/owned-guest.png; it is a compatibility artifact, not the prior UI-result screenshot.
 
+
+## 2026-11-18T13:36:33+08:00 — Verify simultaneous WP8.1 and Win10M MCP sessions
+
+- Add the opt-in real unified-session regression using only owned TEMP fixture contexts. Preserve exact VM/PID/start, CoreCon locale, included manifest identity and borrowed IDE-session checks, with unique capture/results directories.
+- Validation:39 real MCP calls passed in227.7seconds on one transport: each SDK independently and both simultaneously, correct independent opaque session/controller identities, closing Win10M without disrupting WP8.1, empty cleanup warnings/unreleased keys, original IDE sessions still usable in design mode. No Go/input occurred. Evidence: Win10 fixture/session-mcp-YvYag7. Without explicit contexts the committed test skips safely.
+
