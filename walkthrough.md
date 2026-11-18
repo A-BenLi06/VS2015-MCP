@@ -195,3 +195,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-18T11:59:42+08:00 — 暂停上下文与源码帧导航
 新增独立DebugNavigation partial，使用EnvDTE90a StackFrame2取得源码文件、行和Depth；线程/帧ID与pauseId及debugprogram绑定，恢复执行、新断点或切program时作废。新增显式select_thread/select_frame，locals/evaluate可验证预期暂停/帧；Locals2(false)避免隐式属性展开。验证：真实MCP在Compute返回行16定位源码/depth1，切换另一线程并还原，选择caller Main8/depth2读input21，再选择Compute读result42；单步后旧pause/frame拒绝，测试通过并清理owned断点。
 
+
+## 2026-11-18T12:02:49+08:00 — 受保护的小范围编辑
+新增DocumentEditing partial与document_edit，按1起始UTF-16行列/排他结束位置批量应用不重叠区间；全缓冲SHA和可选expectedText在写前校验，使用本工具自己打开的UndoContext事务，异常回滚并核验，拒绝加入用户已有undo事务。read返回完整缓冲SHA，默认不落盘。验证：真实IDE带tab/中文/代理对emoji/CRLF的三处range正确修改，过期hash、重叠、越界均拒绝且缓冲不变，磁盘保持原样；测试通过并恢复保存专用文档。
+
