@@ -237,3 +237,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Add an opt-in native Node test requiring explicit owned TEMP fixture/IDE and XDE PID/start/executable/command line/Hyper-V GUID identity, locale, product ID and observed guest coordinates. Retain structured results and screenshots in unique fixture directories; clean only test-owned breakpoints and the debugging operation started by the test.
 - Validation: actual test passed in 47 seconds: IDE build, solution deploy, project deploy, phone tap, exact guest source breakpoint, locals and guarded expressions21/42, StepOver to the next source line, repeated coherent pause/frame snapshots, stale frame rejection, resume/capture and clean stop/detach. Results: TEMP/wp-mcp-0dbe0d12/runtime-aEEaNt. Default CI skips without the explicit context variable.
 
+
+## 2026-11-18T12:26:51+08:00 — Avoid unsafe bulk project property getters
+
+- A real UAP test caused an isolated VS2015 fixture IDE CLR access-violation crash while reading all project property values. COM catches cannot recover an in-process native crash. Property inventory now enumerates names/indices only; an explicit propertyName is required to invoke a Value getter. Add valueRead and truncation metadata and document the distinction.
+- Validation: owned desktop metadata/property read-write regression passed. Fresh MCP UAP project and active-configuration inventories (limit500) returned metadata without values, IDE stayed alive in Debug|x86 design mode, and detach had no cleanup warnings. Other existing IDEs were preserved.
+

@@ -92,11 +92,14 @@ internal static partial class Program {
         var project=SelectProject(s,Text(request,"projectUniqueName"));string scope=Text(request,"scope","activeConfiguration"),name=Text(request,"propertyName");var properties=SelectProperties(project,scope);var rows=new List<object>();int limit=Int(request,"limit",100,1,500);
         foreach(Property property in properties) {
             if(name!=null&&property.Name!=name)continue;if(rows.Count>=limit)break;
-            try{rows.Add(Map("name",property.Name,"value",ReadPropertyValue(property),"available",true,"indexCount",property.NumIndices));}
-            catch(Exception error){rows.Add(Map("name",property.Name,"available",false,"error",error.Message));}
+            // Some VS2015 project-system Value getters crash the IDE itself,
+            // beyond an out-of-process COM catch. Enumeration reads metadata;
+            // only an explicitly named property invokes its Value getter.
+            try{rows.Add(name==null?Map("name",property.Name,"indexCount",property.NumIndices,"valueRead",false):Map("name",property.Name,"value",ReadPropertyValue(property),"available",true,"valueRead",true,"indexCount",property.NumIndices));}
+            catch(Exception error){rows.Add(Map("name",property.Name,"available",false,"valueRead",false,"error",error.Message));}
         }
         if(name!=null&&rows.Count==0)throw Error("PROPERTY_NOT_FOUND","The selected project/configuration does not expose this property.");
-        return Map("projectUniqueName",project.UniqueName,"scope",scope,"properties",rows,"configurationToken",ConfigurationToken(s),"limit",limit);
+        return Map("projectUniqueName",project.UniqueName,"scope",scope,"properties",rows,"configurationToken",ConfigurationToken(s),"limit",limit,"totalProperties",properties.Count,"truncated",name==null&&rows.Count<properties.Count);
     }
     static object SetProjectProperty(Session s,Dictionary<string,object> request) {
         RequireDesign(s);if(s.ActiveBuild!=null||s.Dte.Solution.SolutionBuild.BuildState==vsBuildState.vsBuildStateInProgress)throw Error("BUILD_BUSY","Wait for the build before changing project properties.");CheckConfigurationToken(s,request);

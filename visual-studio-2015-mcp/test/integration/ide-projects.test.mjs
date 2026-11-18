@@ -43,7 +43,11 @@ test('IDE configuration guards, nested projects and project builds use actual st
     const rejected = await raw('vs2015_solution_configure', { sessionId, configuration: current.activeConfiguration,
       platform: current.activePlatform, startupProjects: [folder.uniqueName], expectedConfigurationToken: current.configurationToken });
     assert.equal(rejected.structuredContent.error.code, 'PROJECT_NOT_FOUND');
+    const inventory = await call('vs2015_project_properties', { sessionId, projectUniqueName: original.startupProjects[0], scope: 'project' });
+    assert.ok(inventory.properties.length > 0);
+    assert.ok(inventory.properties.every(property => property.valueRead === false && !Object.hasOwn(property, 'value')));
     const property = await call('vs2015_project_properties', { sessionId, projectUniqueName: original.startupProjects[0], propertyName: 'StartArguments' });
+    assert.equal(property.properties[0].valueRead, true);
     const value = property.properties[0].value;
     restoreProperty = { projectUniqueName: original.startupProjects[0], propertyName: 'StartArguments', value };
     const set = await call('vs2015_project_property_set', { sessionId, ...restoreProperty, expectedValue: value,

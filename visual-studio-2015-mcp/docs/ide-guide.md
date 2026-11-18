@@ -34,6 +34,8 @@ v0.3.0 增加常驻 .NET Framework x86 STA 桥接，通过 EnvDTE / EnvDTE80 操
 
 SolutionBuild 没有 Rebuild 方法，因此 rebuild 调用固定的 IDE 标准命令 `Build.RebuildSolution`，并等待 RebuildAll 事件。其他构建动作直接调用 SolutionBuild。接口不接受任意 ExecuteCommand 文本。已有构建会收到 `BUILD_BUSY`。Error List 是当前 IDE 视图，可能含设计期错误；与外部 MSBuild 的结构化诊断来源不同。Output pane 的名称保留本机语言，选择应使用枚举结果中的 GUID。部分第三方 pane 不提供可读文本。
 
+`vs2015_project_properties` 未指定 `propertyName` 时只列出实际属性名称和索引信息（`valueRead:false`），再按明确名称读取所需值。VS2015 的部分旧项目属性 getter 会直接导致 IDE 崩溃，进程外异常处理无法保护这种调用；枚举不批量执行这些 getter。即使显式读取，也应先确认该项目系统支持此属性。
+
 ## 持续调试工作流
 
 1. 用 `vs2015_ide_debug_breakpoints`，`action:"add"`，传 source file＋line 或 function；保存返回的 breakpointId。
