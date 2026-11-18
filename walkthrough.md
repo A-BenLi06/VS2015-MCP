@@ -231,3 +231,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Add an opt-in PowerShell 7 fixture generator using the installed official WinRT Blank Application template discovered by TemplateID. It preserves template resource mappings, uses fresh project/product GUIDs, refuses existing directories, and emits source/line/package metadata for real deployment and debugger tests.
 - Validation: the committed generator built a new x86 AppX with MSBuild 14, zero warnings/errors. A separate owned fixture already completed MCP deployment, touch, guest breakpoint, locals21/42, step and Result42 screenshot; automated test integration follows with the same ownership guards.
 
+
+## 2026-11-18T12:25:15+08:00 — Durable WP8.1 MCP end-to-end regression
+
+- Add an opt-in native Node test requiring explicit owned TEMP fixture/IDE and XDE PID/start/executable/command line/Hyper-V GUID identity, locale, product ID and observed guest coordinates. Retain structured results and screenshots in unique fixture directories; clean only test-owned breakpoints and the debugging operation started by the test.
+- Validation: actual test passed in 47 seconds: IDE build, solution deploy, project deploy, phone tap, exact guest source breakpoint, locals and guarded expressions21/42, StepOver to the next source line, repeated coherent pause/frame snapshots, stale frame rejection, resume/capture and clean stop/detach. Results: TEMP/wp-mcp-0dbe0d12/runtime-aEEaNt. Default CI skips without the explicit context variable.
+
