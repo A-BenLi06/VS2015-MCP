@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
-const contextFile = process.env.VS2015_TEST_WP81_CONTEXT;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const guardScript = String.raw`
 $ErrorActionPreference='Stop'
@@ -23,7 +22,8 @@ $vm=Get-CimInstance -Namespace root/virtualization/v2 -ClassName Msvm_ComputerSy
 if(-not $vm -or $vm.ElementName -cne $v.vmName){throw 'Hyper-V VM identity changed'}
 `;
 
-test('owned WP8.1 IDE build/deploy, guest input, breakpoint, coherent context and step', {
+for (const [platform, contextFile] of [['WP8.1', process.env.VS2015_TEST_WP81_CONTEXT], ['Win10M', process.env.VS2015_TEST_WIN10M_CONTEXT]]) {
+test(`owned ${platform} IDE build/deploy, guest input, breakpoint, coherent context and step`, {
   skip: process.platform !== 'win32' || !contextFile, timeout: 600000,
 }, async t => {
   const context = JSON.parse(await readFile(path.resolve(contextFile), 'utf8'));
@@ -145,5 +145,6 @@ test('owned WP8.1 IDE build/deploy, guest input, breakpoint, coherent context an
     }
     await client.close();
   }
-  if (failure || cleanupErrors.length) throw new AggregateError([failure, ...cleanupErrors].filter(Boolean), `WP8.1 runtime failed; inspect ${directory}`);
+  if (failure || cleanupErrors.length) throw new AggregateError([failure, ...cleanupErrors].filter(Boolean), `${platform} runtime failed; inspect ${directory}`);
 });
+}

@@ -243,3 +243,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - A real UAP test caused an isolated VS2015 fixture IDE CLR access-violation crash while reading all project property values. COM catches cannot recover an in-process native crash. Property inventory now enumerates names/indices only; an explicit propertyName is required to invoke a Value getter. Add valueRead and truncation metadata and document the distinction.
 - Validation: owned desktop metadata/property read-write regression passed. Fresh MCP UAP project and active-configuration inventories (limit500) returned metadata without values, IDE stayed alive in Debug|x86 design mode, and detach had no cleanup warnings. Other existing IDEs were preserved.
 
+
+## 2026-11-18T12:29:16+08:00 — Verify the same IDE workflow on Windows 10 Mobile
+
+- Extend the owned-phone regression to separate explicit WP8.1 and Win10M context variables, with the same build/deploy/debug/context/cleanup assertions and target-specific observed coordinates. No emulator is chosen by list order or shared display name.
+- Validation: Windows 10 Mobile14393 dedicated WXGA guest passed in40seconds through real MCP: build, both deployment scopes, touch, exact guest breakpoint, locals21/42, repeated stable frame snapshots, StepOver, stale rejection, resume and PNG capture, clean stop/detach. Evidence: TEMP/vs2015-win10m-aa46b0dade2c4cc1960ec534f96cc0df/runtime-Cf2sst. WP8.1 counterpart already passed47seconds.
+
