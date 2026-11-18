@@ -211,7 +211,8 @@ internal static partial class Program {
     static long ComIdentity(object value){IntPtr pointer=Marshal.GetIUnknownForObject(value);try{return pointer.ToInt64();}finally{Marshal.Release(pointer);}}
     static void RequireDesignOrBreak(Session s){if(s.Dte.Debugger.CurrentMode==dbgDebugMode.dbgRunMode)throw Error("DEBUGGER_RUNNING","Pause execution before changing breakpoints.");}
     static object DebugControl(Session s,Dictionary<string,object> r) {
-        string action=Text(r,"action");var debugger=s.Dte.Debugger;var mode=debugger.CurrentMode;int afterSequence=s.LastDebuggerEventSequence;
+        string action=Text(r,"action");object phoneProof=action=="stop"?null:ValidatePhoneDebugGuard(s,r);
+        var debugger=s.Dte.Debugger;var mode=debugger.CurrentMode;int afterSequence=s.LastDebuggerEventSequence;
         switch(action) {
             case "go": if(mode==dbgDebugMode.dbgRunMode)throw Error("INVALID_DEBUG_STATE","Debugger is already running.");debugger.Go(false);break;
             case "break": if(mode!=dbgDebugMode.dbgRunMode)throw Error("INVALID_DEBUG_STATE","Debugger must be running.");debugger.Break(false);break;
@@ -221,7 +222,9 @@ internal static partial class Program {
             case "stop":if(mode==dbgDebugMode.dbgDesignMode)throw Error("INVALID_DEBUG_STATE","No debug session is active.");debugger.Stop(false);break;
             default:throw Error("INVALID_REQUEST","Unsupported debug action.");
         }
-        return Map("issued",true,"action",action,"afterSequence",afterSequence,"note","Query debugState or wait for events to confirm the resulting mode.");
+        var result=Map("issued",true,"action",action,"afterSequence",afterSequence,"note","Query debugState or wait for events to confirm the resulting mode.");
+        if(phoneProof!=null){result["expectedBindingVerified"]=true;result["phoneBindingProof"]=phoneProof;}
+        return result;
     }
     static object DebugInspect(Session s,Dictionary<string,object> r){return InspectContext(s,r);}
     static object Expression(EnvDTE.Expression value){return Map("name",value.Name,"type",value.Type,"value",Limit(value.Value,16384),"isValidValue",value.IsValidValue,"valueTruncated",(value.Value??"").Length>16384);}

@@ -264,3 +264,10 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Real Appx designer testing exposed editor switching prompts and absent text buffers. Add explicit text/code view and replaceSavedView options, reject unsaved replacement, use prompt-preserving Close to protect edits racing the saved-state check, and navigate only when positions are requested. No dialogs are automatically answered by the product.
 - Validation:16 parser assertions passed; actual owned UAP manifest identity and unsaved-edit/replacement rejection passed in46seconds, restoring original text and identity. A test-only already-open editor prompt was declined after its exact owned controller was stopped. Original user IDEs and files were preserved.
 
+
+## 2026-11-18T13:17:44+08:00 — Check phone binding at IDE debug dispatch
+
+- Add optional expectedPhoneBinding to debug control, retaining the complete nested object through the MCP schema. The same STA command checks actual configuration, sole startup project, included saved manifest SHA/AppId, exact device GUID/property scope and explicit target guards immediately before dispatch. Stop bypasses the guard for recovery; observed preconditions do not claim an IDE-wide lock or guest app identity verification.
+- Give Go a default120-second command budget for cold CoreCon launch while preserving explicit caller limits and ordinary command budgets.
+- Validation:29 production contract/comparator assertions passed; actual owned UAP fixture rejected wrong configuration, manifest fingerprint, app ID, device and property guards without leaving design mode. All5 schema/runtime tests passed; no valid Go was issued by this negative-path suite.
+

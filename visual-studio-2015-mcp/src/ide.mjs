@@ -6,6 +6,10 @@ const sessionId = z.guid();
 const deadline = z.number().int().min(1000).max(600000).default(15000);
 const session = { sessionId, timeoutMs: deadline };
 const limit = z.number().int().min(1).max(200).default(50);
+const phoneTargetGuard = z.object({ name: text, scope: z.enum(['project', 'activeConfiguration']), value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict();
+const expectedPhoneBinding = z.object({ configurationToken: text, projectUniqueName: text, targetPropertyName: text,
+  scope: z.enum(['project', 'activeConfiguration']), deviceId: z.guid(), manifestPath: text,
+  manifestSha256: z.string().regex(/^[a-fA-F0-9]{64}$/), applicationId: text, targetGuards: z.array(phoneTargetGuard).max(32).optional() }).strict();
 const call = operation => async (input, ctx) => {
   try { return await invokeIde(operation, input, ctx); }
   catch (error) { return { error: { code: error.code ?? 'IDE_OPERATION_FAILED', message: error.message,
@@ -70,8 +74,9 @@ export const ideDefinitions = [
         if (value.action === 'add' && !(Boolean(value.file && value.line) !== Boolean(value.function))) ctx.addIssue({ code: 'custom', message: 'Add requires either file+line or function.' });
         if (value.action === 'delete' && !value.breakpointId) ctx.addIssue({ code: 'custom', message: 'Delete requires breakpointId.' });
       }), run: call('breakpoints') },
-  { name: 'vs2015_ide_debug_control', description: 'Issue go/break/stepInto/stepOver/stepOut/stop through the IDE debugger. Commands are asynchronous; inspect state/events or debug_wait for actual transitions. go uses the current startup project and selected deployment/debug target, including configured phone targets.',
-    schema: z.object({ ...session, action: z.enum(['go', 'break', 'stepInto', 'stepOver', 'stepOut', 'stop']) }), run: call('debugControl') },
+  { name: 'vs2015_ide_debug_control', description: 'Issue asynchronous IDE debugger commands and inspect events/wait for actual transitions. Optional expectedPhoneBinding rechecks the configuration, sole startup project, device property and saved manifest inside the same STA dispatch before executing; stop bypasses this guard for recovery. go defaults to a separate 120-second command budget for phone launch.',
+    schema: z.object({ ...session, timeoutMs: deadline.optional(), action: z.enum(['go', 'break', 'stepInto', 'stepOver', 'stepOut', 'stop']), expectedPhoneBinding: expectedPhoneBinding.optional() }),
+    run: (input, ctx) => call('debugControl')({ ...input, timeoutMs: input.timeoutMs ?? (input.action === 'go' ? 120000 : 15000) }, ctx) },
   { name: 'vs2015_ide_debug_inspect', readOnly: true, description: 'Inspect debugger threads, current-thread stack frames, or locals of the current frame in break mode. Does not switch the developer selected thread/frame.',
     schema: z.object({ ...session, kind: z.enum(['threads', 'frames', 'locals']), limit, pauseId: z.guid().optional(), frameId: z.guid().optional() }), run: call('debugInspect') },
   { name: 'vs2015_ide_debug_select_thread', description: 'Select a thread observed in the current paused debugged program. Requires its opaque threadId and current pauseId; resumed or stale contexts are rejected.',
