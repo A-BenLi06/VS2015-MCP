@@ -87,8 +87,10 @@ export const ideDefinitions = [
         const remaining = deadlineAt - Date.now();
         if (remaining <= 0) return { reached: false, timedOut: true, expectedMode: input.mode };
         const result = await call('debugState')({ sessionId: input.sessionId, timeoutMs: Math.min(remaining, 30000) }, ctx);
-        if (result.error) return result;
-        if (result.mode === input.mode && (input.afterSequence === undefined || result.lastDebuggerEventSequence > input.afterSequence)) return { reached: true, ...result };
+        // A transition during a read invalidates that snapshot. Poll a fresh
+        // read; never replay the go/step command which started this wait.
+        if (result.error && result.error.code !== 'DEBUG_CONTEXT_CHANGED') return result;
+        if (!result.error && result.mode === input.mode && (input.afterSequence === undefined || result.lastDebuggerEventSequence > input.afterSequence)) return { reached: true, ...result };
         const wait = Math.min(input.pollIntervalMs, deadlineAt - Date.now());
         if (wait <= 0) return { reached: false, timedOut: true, expectedMode: input.mode, lastState: result };
         await new Promise((resolve, reject) => {

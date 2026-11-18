@@ -9,6 +9,22 @@ using EnvDTE90a;
 // Execution context IDs are valid only for one pause and one debugged program.
 // Reading a list does not switch the developer's selected thread or frame.
 internal static partial class Program {
+    static long DebugObjectIdentity(object value){return value==null?0:ComIdentity(value);}
+    static string ProgramIdentity(EnvDTE.Program program) {
+        if(program==null)throw Error("DEBUG_PROGRAM_UNAVAILABLE","No current debugged program is available.");
+        var process=program.Process as Process2;
+        if(process==null||process.Transport==null)throw Error("DEBUG_PROGRAM_IDENTITY_UNAVAILABLE","The debugger does not expose a stable process transport identity.");
+        return Json.Serialize(new object[]{process.ProcessID,process.Name,process.Transport.ID,process.TransportQualifier,program.Name});
+    }
+    static string ProgramIdentityKey(Session session) {
+        var program=session.Dte.Debugger.CurrentProgram;string key=ProgramIdentity(program);int matches=0;
+        // Remote phone debugging returns new Program/Process COM proxies on
+        // repeated reads. Use observable debugger identity, and fail closed when
+        // multiple programs in the process cannot be distinguished by it.
+        foreach(EnvDTE.Program candidate in program.Process.Programs)if(ProgramIdentity(candidate)==key)matches++;
+        if(matches!=1)throw Error("DEBUG_PROGRAM_IDENTITY_AMBIGUOUS","The current program cannot be uniquely identified within its process.");
+        return key;
+    }
     sealed class DebugThreadRecord {
         public readonly string Id=Guid.NewGuid().ToString();
         public readonly EnvDTE.Thread Value;public readonly long Identity;
@@ -21,17 +37,22 @@ internal static partial class Program {
     }
     sealed partial class Session {
         public string PauseId;
-        long PauseProgramIdentity;
+        string PauseProgramIdentity;
         public readonly Dictionary<string,DebugThreadRecord> DebugThreads=new Dictionary<string,DebugThreadRecord>();
         public readonly Dictionary<string,DebugFrameRecord> DebugFrames=new Dictionary<string,DebugFrameRecord>();
-        public void InvalidatePause(){PauseId=null;PauseProgramIdentity=0;DebugThreads.Clear();DebugFrames.Clear();}
+        public void InvalidatePause(){PauseId=null;PauseProgramIdentity=null;DebugThreads.Clear();DebugFrames.Clear();}
         public void BeginPause(){InvalidatePause();PauseId=Guid.NewGuid().ToString();}
         public void EnsurePause(){
             RequireBreak(this);
-            long program=ComIdentity(Dte.Debugger.CurrentProgram);
+            string program=ProgramIdentityKey(this);
             if(PauseId==null)BeginPause();
-            if(PauseProgramIdentity!=0&&PauseProgramIdentity!=program)BeginPause();
+            if(PauseProgramIdentity!=null&&PauseProgramIdentity!=program)BeginPause();
             PauseProgramIdentity=program;
+        }
+        public void CheckSnapshot(string pause,long thread,long frame){
+            EnsurePause();
+            if(PauseId!=pause||DebugObjectIdentity(Dte.Debugger.CurrentThread)!=thread||DebugObjectIdentity(Dte.Debugger.CurrentStackFrame)!=frame)
+                throw Error("DEBUG_CONTEXT_CHANGED","The debugger context changed while reading it; inspect again before using any context IDs.");
         }
         public void CheckPause(Dictionary<string,object> request){
             EnsurePause();string expected=Text(request,"pauseId");
@@ -67,19 +88,23 @@ internal static partial class Program {
             "sourceFile",string.IsNullOrEmpty(file)?null:file,"line",line,"depth",depth,"sourceUnavailable",sourceUnavailable);
     }
     static Dictionary<string,object> DebugStateContext(Session session){
-        var debugger=session.Dte.Debugger;var mode=debugger.CurrentMode;var processes=new List<object>();
+        var debugger=session.Dte.Debugger;int sequence=session.LastDebuggerEventSequence;var mode=debugger.CurrentMode;var processes=new List<object>();
         foreach(EnvDTE.Process process in debugger.DebuggedProcesses){if(processes.Count>=100)break;processes.Add(Map("processId",process.ProcessID,"name",process.Name));}
         object thread=null,frame=null;
         if(mode==dbgDebugMode.dbgBreakMode){
-            session.EnsurePause();var current=debugger.CurrentThread;
-            if(current!=null){thread=ThreadInfo(session,current);var currentFrame=debugger.CurrentStackFrame;if(currentFrame!=null)frame=FrameInfo(session,currentFrame,ComIdentity(current));}
+            session.EnsurePause();string pause=session.PauseId;var current=debugger.CurrentThread;var currentFrame=debugger.CurrentStackFrame;
+            if(current!=null){thread=ThreadInfo(session,current);if(currentFrame!=null)frame=FrameInfo(session,currentFrame,ComIdentity(current));}
+            session.CheckSnapshot(pause,DebugObjectIdentity(current),DebugObjectIdentity(currentFrame));
         } else session.InvalidatePause();
-        return Map("mode",Mode(mode),"modeValue",(int)mode,"reason",debugger.LastBreakReason.ToString(),"processes",processes,
+        string reason=debugger.LastBreakReason.ToString();
+        if(debugger.CurrentMode!=mode||session.LastDebuggerEventSequence!=sequence)throw Error("DEBUG_CONTEXT_CHANGED","The debugger transitioned while reading state; inspect again.");
+        return Map("mode",Mode(mode),"modeValue",(int)mode,"reason",reason,"processes",processes,
             "lastSequence",session.Sequence,"lastDebuggerEventSequence",session.LastDebuggerEventSequence,"pauseId",session.PauseId,"currentThread",thread,"currentFrame",frame);
     }
     static Dictionary<string,object> InspectContext(Session session,Dictionary<string,object> request){
         session.EnsurePause();string expected=Text(request,"pauseId");
         if(expected!=null&&expected!=session.PauseId)throw Error("STALE_DEBUG_CONTEXT","The requested pause is no longer current.");
+        string pause=session.PauseId;long selectedThread=DebugObjectIdentity(session.Dte.Debugger.CurrentThread),selectedFrame=DebugObjectIdentity(session.Dte.Debugger.CurrentStackFrame);
         string kind=Text(request,"kind","frames");int limit=Int(request,"limit",50,1,200);var rows=new List<object>();int total=0;
         if(kind=="threads"){
             foreach(EnvDTE.Thread thread in session.Dte.Debugger.CurrentProgram.Threads){total++;if(rows.Count<limit)rows.Add(ThreadInfo(session,thread));}
@@ -94,6 +119,7 @@ internal static partial class Program {
             foreach(EnvDTE.Expression value in locals){total++;if(rows.Count<limit)rows.Add(Expression(value));}
         }else throw Error("INVALID_REQUEST","Unsupported debug inspection kind.");
         var state=DebugStateContext(session);
+        session.CheckSnapshot(pause,selectedThread,selectedFrame);
         return Map("kind",kind,"items",rows,"limit",limit,"total",total,"truncated",total>rows.Count,"pauseId",session.PauseId,
             "currentThread",state["currentThread"],"currentFrame",state["currentFrame"]);
     }
@@ -104,8 +130,9 @@ internal static partial class Program {
     }
     static object EvaluateInContext(Session session,Dictionary<string,object> request){
         session.EnsurePause();CheckCurrentFrame(session,request);
+        string pause=session.PauseId;long thread=DebugObjectIdentity(session.Dte.Debugger.CurrentThread),frame=DebugObjectIdentity(session.Dte.Debugger.CurrentStackFrame);
         var result=(Dictionary<string,object>)Expression(session.Dte.Debugger.GetExpression(Text(request,"expression"),false,Int(request,"expressionTimeoutMs",1000,100,10000)));
-        var state=DebugStateContext(session);result["pauseId"]=session.PauseId;result["currentFrame"]=state["currentFrame"];return result;
+        var state=DebugStateContext(session);session.CheckSnapshot(pause,thread,frame);result["pauseId"]=session.PauseId;result["currentFrame"]=state["currentFrame"];return result;
     }
     static object SelectThread(Session session,Dictionary<string,object> request){
         session.CheckPause(request);string id=Text(request,"threadId");DebugThreadRecord record;

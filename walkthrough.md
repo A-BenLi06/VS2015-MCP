@@ -218,3 +218,10 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Return the actual DTE LocaleID alongside solution status and configuration inventory. Phone CoreCon profiles are locale-scoped: identical profile GUIDs under different locales can launch different XDE instances, so the IDE locale must be observed explicitly rather than guessed from host culture or translated names.
 - Validation: owned IDE project-system integration passed and confirmed the two endpoints report the same positive locale identity.
 
+
+## 2026-11-18T12:20:30+08:00 — Stable remote debugger program identity and coherent snapshots
+
+- Real WP8.1 inspection showed changing Program/Process IUnknown pointers on consecutive reads with no execution event, which invalidated frame IDs during one response. Identify programs by actual process ID/name, debug transport ID/qualifier and program name; reject ambiguous matching programs rather than guessing.
+- Validate paused thread/frame and execution epoch before returning inspections/evaluations. If a context changes during a read, return DEBUG_CONTEXT_CHANGED; debug_wait polls a fresh read without replaying go/step. Threads without a stack frame remain valid observations.
+- Validation: owned desktop thread/caller-frame navigation and stale-after-step regression passed, including repeated pause consistency checks; actual WP8.1 program identity probe and generic XAML snapshots confirmed the transport key stays stable. All 37 environment-independent tests passed.
+
