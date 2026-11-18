@@ -199,3 +199,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-18T12:02:49+08:00 — 受保护的小范围编辑
 新增DocumentEditing partial与document_edit，按1起始UTF-16行列/排他结束位置批量应用不重叠区间；全缓冲SHA和可选expectedText在写前校验，使用本工具自己打开的UndoContext事务，异常回滚并核验，拒绝加入用户已有undo事务。read返回完整缓冲SHA，默认不落盘。验证：真实IDE带tab/中文/代理对emoji/CRLF的三处range正确修改，过期hash、重叠、越界均拒绝且缓冲不变，磁盘保持原样；测试通过并恢复保存专用文档。
 
+
+## 2026-11-18T12:10:33+08:00 — IDE phone deployment event completion
+
+- Accept the observed WP8.1 solution deployment preparation sequence (Build begin, Deploy done), while requiring the final matching Deploy event to confirm completion. A preparatory Build done alone keeps deployment pending and explicit reconciliation records an unconfirmed outcome.
+- Validation: real WP8.1 solution deployment completed with LastBuildInfo=0; the owned IDE reliability integration passed, including missing-Deploy rejection, manual breakpoint preservation and bounded build history.
+

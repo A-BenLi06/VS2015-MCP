@@ -278,13 +278,20 @@ internal static partial class Program {
             record.Value.Delete();
         }
         bool MatchesBuild(vsBuildScope scope,vsBuildAction action){if(ActiveBuild==null||scope!=ActiveBuild.ExpectedScope)return false;return (ActiveBuild.Phase=="rebuild"&&action==vsBuildAction.vsBuildActionRebuildAll)||(ActiveBuild.Phase=="clean"&&action==vsBuildAction.vsBuildActionClean)||(ActiveBuild.Phase=="build"&&action==vsBuildAction.vsBuildActionBuild)||(ActiveBuild.Phase=="deploy"&&action==vsBuildAction.vsBuildActionDeploy);}
-        void BeginBuild(vsBuildScope scope,vsBuildAction action){if(MatchesBuild(scope,action))ActiveBuild.SawBegin=true;Event("buildBegin",Map("scope",scope.ToString(),"action",action.ToString(),"buildId",ActiveBuild==null?null:ActiveBuild.Id));}
+        void BeginBuild(vsBuildScope scope,vsBuildAction action){
+            // Phone solution deployment can announce preparation as Build and
+            // terminate as Deploy. The final Deploy event remains mandatory.
+            bool preparation=ActiveBuild!=null&&ActiveBuild.Phase=="deploy"&&scope==ActiveBuild.ExpectedScope&&action==vsBuildAction.vsBuildActionBuild;
+            if(MatchesBuild(scope,action)||preparation)ActiveBuild.SawBegin=true;
+            Event("buildBegin",Map("scope",scope.ToString(),"action",action.ToString(),"buildId",ActiveBuild==null?null:ActiveBuild.Id,"deploymentPreparation",preparation));
+        }
         void DoneBuild(vsBuildScope scope,vsBuildAction action){
             try { DoneBuildCore(scope,action); }
             catch(Exception error){if(ActiveBuild!=null){ActiveBuild.State="unconfirmed";ActiveBuild.Complete=false;ActiveBuild.FinishedUtc=DateTime.UtcNow.ToString("o");Event("buildUnconfirmed",Map("buildId",ActiveBuild.Id,"message",error.Message));ActiveBuild=null;}}
         }
         void DoneBuildCore(vsBuildScope scope,vsBuildAction action){
             BuildJob job=ActiveBuild;Event("buildDone",Map("scope",scope.ToString(),"action",action.ToString(),"buildId",job==null?null:job.Id));if(job==null)return;
+            if(job.Phase=="deploy"&&scope==job.ExpectedScope&&action==vsBuildAction.vsBuildActionBuild){Event("deploymentPreparationDone",Map("buildId",job.Id));return;}
             if(!job.SawBegin||!MatchesBuild(scope,action)){job.State="unconfirmed";job.Complete=false;ActiveBuild=null;return;}
             int info=Dte.Solution.SolutionBuild.LastBuildInfo;job.LastBuildInfo=info;
             job.Complete=true;job.State=info==0?"succeeded":"failed";job.FinishedUtc=DateTime.UtcNow.ToString("o");ActiveBuild=null;
