@@ -292,10 +292,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Validation:39 real MCP calls passed in227.7seconds on one transport: each SDK independently and both simultaneously, correct independent opaque session/controller identities, closing Win10M without disrupting WP8.1, empty cleanup warnings/unreleased keys, original IDE sessions still usable in design mode. No Go/input occurred. Evidence: Win10 fixture/session-mcp-YvYag7. Without explicit contexts the committed test skips safely.
 
 
-## 2026-11-18T14:15:11+08:00 ¡ª Expose observed Hyper-V VM GUID in phone discovery and legacy status
+## 2026-11-18T14:15:11+08:00 â€” Expose observed Hyper-V VM GUID in phone discovery and legacy status
 
-- Query Msvm_ComputerSystem once per discovery pass in PhoneCore.psm1 using ordinal ElementName match against the actual XDE command-line mName and strict single-GUID validation (PHONE_VM_QUERY_FAILED, PHONE_VM_NOT_FOUND, PHONE_VM_NAME_AMBIGUOUS, PHONE_VM_IDENTITY_INVALID).
-- Include mId, mIdentityObservedAtUtc, identityUnavailable and top-level mIdentitySnapshot on phone_discover and startTimeUtc plus optional VM identity fields on phone_status, without failing legacy reads when Hyper-V metadata is unavailable or relaxing strong Get-XdeVmIdentity session guards.
-- Document the returned identity fields on phone_discover and phone_status in src/phone.mjs and make 	est/phone-vm-discovery.test.mjs resilient to missing optional SystemRoot variables.
-- Validation: 
-ode --test test/*.test.mjs passed 94/94 (including 11 PS5.1 assertions in Test-PhoneVmDiscovery.ps1); live phone-vm-discovery-runtime.test.mjs passed 1/1 against a dedicated owned WP8.1 emulator (57B0267A-6444-41EB-9127-2ED594284A2D, locale 1033), which was stopped cleanly afterward (EnabledState=3).
+- Query `Msvm_ComputerSystem` once per discovery pass in `PhoneCore.psm1` using ordinal `ElementName` match against the actual XDE command-line `vmName` and strict single-GUID validation (`PHONE_VM_QUERY_FAILED`, `PHONE_VM_NOT_FOUND`, `PHONE_VM_NAME_AMBIGUOUS`, `PHONE_VM_IDENTITY_INVALID`).
+- Include `vmId`, `vmIdentityObservedAtUtc`, `identityUnavailable` and top-level `vmIdentitySnapshot` on `phone_discover` and `startTimeUtc` plus optional VM identity fields on `phone_status`, without failing legacy reads when Hyper-V metadata is unavailable or relaxing strong `Get-XdeVmIdentity` session guards.
+- Document the returned identity fields on `phone_discover` and `phone_status` in `src/phone.mjs` and make `test/phone-vm-discovery.test.mjs` resilient to missing optional `SystemRoot` variables.
+- Validation: `node --test test/*.test.mjs` passed 94/94 (including 11 PS5.1 assertions in `Test-PhoneVmDiscovery.ps1`); live `phone-vm-discovery-runtime.test.mjs` passed 1/1 against a dedicated owned WP8.1 emulator (`57B0267A-6444-41EB-9127-2ED594284A2D`, locale 1033), which was stopped cleanly afterward (`EnabledState=3`).
