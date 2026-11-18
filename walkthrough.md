@@ -279,3 +279,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Wire graceful EOF cleanup into MCP server shutdown, release held keys and leave IDE/VM running.
 - Validation:38 manager tests passed plus existing schema/PS lifecycle suites (41 focused tests before two additional guard-composition regressions). Actual Win10M public MCP integration passed51seconds: open/status/endpoints/proxy/PNG/close, exact binding evidence and continued use of the original borrowed IDE session. Two-platform concurrent real validation is continuing separately; no Go or guest input was sent by this read-only test.
 
+
+## 2026-11-18T13:32:43+08:00 — Resolve phone SDK roots from Windows known folders
+
+- Reproduce legacy screenshot failure with optional OS-directory environment variables omitted: XDE discovery called Join-Path with null ProgramFiles(x86) before reaching CaptureImage. Use Environment.SpecialFolder for ProgramFilesX86/Windows across shared XDE/tool/CoreCon discovery; preserve explicit custom roots and existing one-shot envelopes.
+- Validation: known-folder unit test passed with directory variables removed. Actual original MCP legacy discovery/status/inline screenshot and existing PNG replacement passed2 tests in20seconds under that minimal environment. Capture evidence is unique TEMP/vs-phone-minimal-env-IgRUQu/owned-guest.png; it is a compatibility artifact, not the prior UI-result screenshot.
+

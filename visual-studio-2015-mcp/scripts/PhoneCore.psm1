@@ -41,8 +41,15 @@ function Require-Value($Object, [string]$Name) {
     if ($null -eq $value -or [string]::IsNullOrWhiteSpace([string]$value)) { throw "Missing parameter: $Name" }
     return $value
 }
+function Get-PhoneSystemPath([Environment+SpecialFolder]$Folder) {
+    $path=[Environment]::GetFolderPath($Folder)
+    if([string]::IsNullOrWhiteSpace($path)){
+        $exception=New-Object InvalidOperationException(('Windows did not expose the known folder: '+$Folder));$exception.Data['code']='PHONE_OS_PATH_UNAVAILABLE';throw $exception
+    }
+    return [IO.Path]::GetFullPath($path)
+}
 function Get-XdeInstallations {
-    $roots = @((Join-Path ${env:ProgramFiles(x86)} 'Microsoft XDE')) + @(Get-Value $script:PhoneRequest 'xdeRoots' @()); foreach ($root in $roots | Select-Object -Unique) {
+    $roots = @((Join-Path (Get-PhoneSystemPath ([Environment+SpecialFolder]::ProgramFilesX86)) 'Microsoft XDE')) + @(Get-Value $script:PhoneRequest 'xdeRoots' @()); foreach ($root in $roots | Select-Object -Unique) {
     if (!(Test-Path -LiteralPath $root)) { continue }
     foreach ($dir in Get-ChildItem -LiteralPath $root -Directory) {
         $exe = Join-Path $dir.FullName 'XDE.exe'
@@ -54,10 +61,10 @@ function Get-XdeInstallations {
 }
 function Get-PhoneTools {
     $paths = @(
-        (Join-Path ${env:ProgramFiles(x86)} 'Microsoft SDKs\Windows Phone\v8.1\Tools\AppDeploy\AppDeployCmd.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} 'Microsoft SDKs\Windows Phone\v8.0\Tools\XAP Deployment\XapDeployCmd.exe')
+        (Join-Path (Get-PhoneSystemPath ([Environment+SpecialFolder]::ProgramFilesX86)) 'Microsoft SDKs\Windows Phone\v8.1\Tools\AppDeploy\AppDeployCmd.exe'),
+        (Join-Path (Get-PhoneSystemPath ([Environment+SpecialFolder]::ProgramFilesX86)) 'Microsoft SDKs\Windows Phone\v8.0\Tools\XAP Deployment\XapDeployCmd.exe')
     )
-    $kitBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+    $kitBin = Join-Path (Get-PhoneSystemPath ([Environment+SpecialFolder]::ProgramFilesX86)) 'Windows Kits\10\bin'
     if (Test-Path -LiteralPath $kitBin) {
         $paths += Join-Path $kitBin 'x86\WinAppDeployCmd.exe'
         foreach ($dir in Get-ChildItem -LiteralPath $kitBin -Directory) { $paths += Join-Path $dir.FullName 'x86\WinAppDeployCmd.exe' }
@@ -91,7 +98,7 @@ public static class PhoneCommandLine {
     }
 }
 function Get-CoreConDevices([int]$LocaleId) {
-    $gac = Join-Path $env:windir 'Microsoft.NET\assembly\GAC_MSIL\Microsoft.SmartDevice.Connectivity'
+    $gac = Join-Path (Get-PhoneSystemPath ([Environment+SpecialFolder]::Windows)) 'Microsoft.NET\assembly\GAC_MSIL\Microsoft.SmartDevice.Connectivity'
     $assembly = Get-ChildItem -LiteralPath $gac -Directory | Sort-Object Name -Descending | ForEach-Object {Join-Path $_.FullName 'Microsoft.Smartdevice.Connectivity.dll'} | Where-Object {Test-Path -LiteralPath $_} | Select-Object -First 1
     if (!$assembly) { throw 'CoreCon Microsoft.SmartDevice.Connectivity is not installed.' }
     [void][Reflection.Assembly]::LoadFrom($assembly)
