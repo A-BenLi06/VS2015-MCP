@@ -72,13 +72,13 @@ const inputSchema = z.discriminatedUnion('action', [
 ]);
 
 export const phoneDefinitions = [
-  { name: 'phone_discover', readOnly: true, description: 'Find installed XDE versions, deployment CLIs and currently running WP8.1/Win10 Mobile emulators; returns validated process IDs and VM names.',
+  { name: 'phone_discover', readOnly: true, description: 'Find installed XDE versions, deployment CLIs and currently running WP8.1/Win10 Mobile emulators. Running entries include validated processId, startTimeUtc, vmName and observed Hyper-V vmId (vmIdentityObservedAtUtc or structured identityUnavailable when Hyper-V metadata is unavailable), plus top-level vmIdentitySnapshot, so callers can pass processId, expectedStartTimeUtc and expectedVmId into phone_session_open.',
     schema: z.object(common), run: (input, ctx) => phone(input, 'discover', ctx) },
   { name: 'phone_devices', readOnly: true, description: 'Enumerate SDK/CoreCon device profiles and stable device GUIDs, preserving local display names and language.',
     schema: z.object({ ...common, localeId: deviceFields.localeId }), run: (input, ctx) => phone(input, 'devices', ctx) },
   { name: 'phone_start', description: 'Connect to a discovered emulator device GUID; the installed SDK starts its configured VM if needed. Refresh phone_discover after a timeout before retrying.',
     schema: z.object({ ...deviceFields, timeoutMs: common.timeoutMs.default(300000) }), run: (input, ctx) => phone(input, 'start', ctx) },
-  { name: 'phone_status', readOnly: true, description: 'Read a running emulator state, readiness, guest resolution, zoom and supported device buttons by validated XDE processId.',
+  { name: 'phone_status', readOnly: true, description: 'Read a running emulator state, readiness, guest resolution, zoom and supported device buttons by validated XDE processId; returns startTimeUtc and optional observed vmId or identityUnavailable diagnostics without failing when Hyper-V WMI metadata is inaccessible.',
     schema: z.object(processFields), run: (input, ctx) => phone(input, 'status', ctx) },
   { name: 'phone_endpoint', readOnly: true, description: 'Read the selected emulator host and guest IP addresses for deployment or Device Portal connections.',
     schema: z.object(processFields), run: (input, ctx) => phone(input, 'endpoint', ctx) },

@@ -23,6 +23,39 @@ function Get-XdeVmIdentity($Process) {
     }
     return $vmId.ToString('D')
 }
+function Get-PhoneVmInventory {
+    $observed=[DateTime]::UtcNow.ToString('o')
+    try {
+        $machines=@(Get-CimInstance -Namespace 'root/virtualization/v2' -ClassName Msvm_ComputerSystem -ErrorAction Stop)
+        return @{available=$true;observedAtUtc=$observed;machines=$machines;error=$null}
+    } catch {
+        return @{available=$false;observedAtUtc=$observed;machines=@();error=@{code='PHONE_VM_QUERY_FAILED';message=$_.Exception.Message;hresult=$_.Exception.HResult}}
+    }
+}
+function Resolve-PhoneVmIdentity($Inventory,[string]$VmName) {
+    if(-not $Inventory.available){return @{vmId=$null;vmIdentityObservedAtUtc=$Inventory.observedAtUtc;identityUnavailable=$Inventory.error}}
+    $matches=@($Inventory.machines | Where-Object {[string]::Equals([string]$_.ElementName,$VmName,[StringComparison]::Ordinal)})
+    $id=[guid]::Empty
+    if($matches.Count -eq 1 -and [guid]::TryParse([string]$matches[0].Name,[ref]$id)){
+        return @{vmId=$id.ToString('D');vmIdentityObservedAtUtc=$Inventory.observedAtUtc;identityUnavailable=$null}
+    }
+    $code=if($matches.Count -eq 0){'PHONE_VM_NOT_FOUND'}elseif($matches.Count -gt 1){'PHONE_VM_NAME_AMBIGUOUS'}else{'PHONE_VM_IDENTITY_INVALID'}
+    return @{vmId=$null;vmIdentityObservedAtUtc=$Inventory.observedAtUtc;identityUnavailable=@{code=$code;message='The actual XDE command-line VM name did not resolve to one valid Hyper-V VM GUID.';vmName=$VmName;matchingRecords=$matches.Count}}
+}
+function Add-PhoneVmIdentity($Process,$Identity) {
+    $row=[ordered]@{}
+    foreach($property in $Process.PSObject.Properties){$row[$property.Name]=$property.Value}
+    foreach($name in @('vmId','vmIdentityObservedAtUtc','identityUnavailable')){$row[$name]=$Identity[$name]}
+    return [pscustomobject]$row
+}
+function Get-PhoneRunningState {
+    $processes=@(Get-XdeProcesses)
+    # Discovery is one immutable observation pass. Never query Hyper-V once
+    # per process and combine unrelated snapshots or select a display-name guess.
+    $inventory=Get-PhoneVmInventory
+    $rows=@(foreach($process in $processes){Add-PhoneVmIdentity $process (Resolve-PhoneVmIdentity $inventory ([string]$process.vmName))})
+    return @{emulators=$rows;vmIdentitySnapshot=@{available=$inventory.available;observedAtUtc=$inventory.observedAtUtc;error=$inventory.error}}
+}
 function Enter-XdeLease($Process) {
     # Two controllers for the same VM must not acquire independent input leases.
     $vmId=Get-XdeVmIdentity $Process
@@ -148,7 +181,7 @@ function Get-InputClient($Client, $Process) {
 function Get-State($Client,$Process) {
     $bounds=$Client.DisplayWindowBounds
     $resolution=Get-Resolution $Process $Client
-    [pscustomobject]@{processId=$Process.processId;vmName=$Process.vmName;state=$Client.VmState.ToString();shellReady=$Client.IsShellReady;toolsReady=$Client.IsToolsPipeReady();display=@{width=$resolution.width;height=$resolution.height;coordinateSpace='guest-pixels'};hostDisplayBounds=@{x=$bounds.X;y=$bounds.Y;width=$bounds.Width;height=$bounds.Height};zoomPercent=$Client.ScreenZoomPercent;orientation=$Client.DisplayOrientation.ToString();buttons=@($Client.GetSkinButtonInfos() | ForEach-Object {$_.ButtonType.ToString()})}
+    [pscustomobject]@{processId=$Process.processId;startTimeUtc=$Process.startTimeUtc;vmName=$Process.vmName;state=$Client.VmState.ToString();shellReady=$Client.IsShellReady;toolsReady=$Client.IsToolsPipeReady();display=@{width=$resolution.width;height=$resolution.height;coordinateSpace='guest-pixels'};hostDisplayBounds=@{x=$bounds.X;y=$bounds.Y;width=$bounds.Width;height=$bounds.Height};zoomPercent=$Client.ScreenZoomPercent;orientation=$Client.DisplayOrientation.ToString();buttons=@($Client.GetSkinButtonInfos() | ForEach-Object {$_.ButtonType.ToString()})}
 }
 function Get-Resolution($Process,$Client) {
     # Mouse input is in guest pixel coordinates, independent of the host window position or zoom.
@@ -167,8 +200,8 @@ function Send-Point($InputObject,[int]$X,[int]$Y,[bool]$Down) {
 }
 function Invoke-PhoneRequest($Request) {
     $action=[string](Require-Value $Request 'action')
-    if ($action -eq 'discover') { return @{bridge=@{architecture='x86';runtime=$PSVersionTable.PSVersion.ToString()};xde=@(Get-XdeInstallations);tools=@(Get-PhoneTools);running=@(Get-XdeProcesses)} }
-    if ($action -eq 'running') { return @{emulators=@(Get-XdeProcesses)} }
+    if ($action -eq 'discover') { $state=Get-PhoneRunningState;return @{bridge=@{architecture='x86';runtime=$PSVersionTable.PSVersion.ToString()};xde=@(Get-XdeInstallations);tools=@(Get-PhoneTools);running=$state.emulators;vmIdentitySnapshot=$state.vmIdentitySnapshot} }
+    if ($action -eq 'running') { return Get-PhoneRunningState }
     if ($action -in @('devices','start','applications','appLaunch','appStop','appUninstall')) {
         $locale=[int](Get-Value $Request 'localeId' ([Globalization.CultureInfo]::CurrentUICulture.LCID))
         $devices=@(Get-CoreConDevices $locale)
@@ -198,7 +231,9 @@ function Invoke-PhoneRequest($Request) {
             if (!$client.IsShellReady) { throw 'The emulator shell is not ready for input.' }
             $inputObject=Get-InputClient $client $process
         }
-        return Invoke-XdeOperation $Request $process $client $inputObject
+        $result=Invoke-XdeOperation $Request $process $client $inputObject
+        if($action -eq 'status'){$result=Add-PhoneVmIdentity $result (Resolve-PhoneVmIdentity (Get-PhoneVmInventory) ([string]$process.vmName))}
+        return $result
     } finally {
         if ($inputObject -and $inputObject.feature) {try {$inputObject.feature.Dispose()} catch {$script:CleanupWarnings.Add($_.Exception.Message)}}
         if ($client) {try {$client.Dispose()} catch {$script:CleanupWarnings.Add($_.Exception.Message)}}
