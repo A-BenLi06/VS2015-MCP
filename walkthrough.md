@@ -212,3 +212,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Validation: owned nested desktop project build integration passed. On the dedicated WP8.1 VM, MCP solution deployment and project deployment both reached matching completion events with LastBuildInfo=0; raw events confirm Debug|x86.
 - Reference: Microsoft SolutionBuild.BuildProject documents the solution-configuration context and mandatory OnBuildDone completion; the full platform qualifier was verified on installed VS2015 Update 3 rather than inferred from method return.
 
+
+## 2026-11-18T12:14:31+08:00 — Expose the selected IDE locale for phone identity
+
+- Return the actual DTE LocaleID alongside solution status and configuration inventory. Phone CoreCon profiles are locale-scoped: identical profile GUIDs under different locales can launch different XDE instances, so the IDE locale must be observed explicitly rather than guessed from host culture or translated names.
+- Validation: owned IDE project-system integration passed and confirmed the two endpoints report the same positive locale identity.
+

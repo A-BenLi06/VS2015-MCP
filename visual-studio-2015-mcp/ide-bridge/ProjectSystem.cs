@@ -47,7 +47,7 @@ internal static partial class Program {
         var configurations=new List<object>();
         foreach(SolutionConfiguration item in s.Dte.Solution.SolutionBuild.SolutionConfigurations){var config=(SolutionConfiguration2)item;var contexts=new List<object>();foreach(SolutionContext context in config.SolutionContexts)contexts.Add(Map("projectName",context.ProjectName,"configurationName",context.ConfigurationName,"platformName",context.PlatformName,"shouldBuild",context.ShouldBuild,"shouldDeploy",context.ShouldDeploy));configurations.Add(Map("name",config.Name,"platform",config.PlatformName,"contexts",contexts));}
         var inventory=InventoryProjects(s);var active=(SolutionConfiguration2)s.Dte.Solution.SolutionBuild.ActiveConfiguration;
-        return Map("configurations",configurations,"activeConfiguration",active.Name,"activePlatform",active.PlatformName,"startupProjects",StartupNames(s.Dte.Solution.SolutionBuild.StartupProjects),"configurationToken",ConfigurationToken(s),"projects",inventory.Rows,"warnings",inventory.Warnings,"truncated",inventory.Truncated);
+        return Map("ideLocaleId",s.Dte.LocaleID,"configurations",configurations,"activeConfiguration",active.Name,"activePlatform",active.PlatformName,"startupProjects",StartupNames(s.Dte.Solution.SolutionBuild.StartupProjects),"configurationToken",ConfigurationToken(s),"projects",inventory.Rows,"warnings",inventory.Warnings,"truncated",inventory.Truncated);
     }
     static void CheckConfigurationToken(Session s,Dictionary<string,object> request) {
         string expected=Text(request,"expectedConfigurationToken");if(string.IsNullOrEmpty(expected)||expected!=ConfigurationToken(s))throw Error("CONFIGURATION_CONFLICT","The active IDE configuration or startup projects changed; re-read configurations before modifying them.");
@@ -125,6 +125,6 @@ internal static partial class Program {
     static object RecursiveSolutionStatus(Session s) {
         var solution=s.Dte.Solution;var projects=InventoryProjects(s);string name=null,platform=null;string token=null;object startup=null;
         if(solution.IsOpen){var active=(SolutionConfiguration2)solution.SolutionBuild.ActiveConfiguration;name=active.Name;platform=active.PlatformName;token=ConfigurationToken(s);startup=StartupNames(solution.SolutionBuild.StartupProjects);}
-        return Map("sessionId",s.Id,"isOpen",solution.IsOpen,"fullName",solution.FullName,"saved",solution.Saved,"activeConfiguration",name,"activePlatform",platform,"startupProjects",startup,"configurationToken",token,"projects",projects.Rows,"projectWarnings",projects.Warnings,"projectsTruncated",projects.Truncated,"buildState",solution.SolutionBuild.BuildState.ToString(),"debugger",DebugState(s));
+        return Map("sessionId",s.Id,"ideLocaleId",s.Dte.LocaleID,"isOpen",solution.IsOpen,"fullName",solution.FullName,"saved",solution.Saved,"activeConfiguration",name,"activePlatform",platform,"startupProjects",startup,"configurationToken",token,"projects",projects.Rows,"projectWarnings",projects.Warnings,"projectsTruncated",projects.Truncated,"buildState",solution.SolutionBuild.BuildState.ToString(),"debugger",DebugState(s));
     }
 }

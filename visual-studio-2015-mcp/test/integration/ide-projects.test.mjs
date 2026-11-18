@@ -22,7 +22,10 @@ test('IDE configuration guards, nested projects and project builds use actual st
   try {
     ({ sessionId } = await call('vs2015_attach', { processId: fixture.processId, expectedStartTimeUtc: fixture.startTimeUtc }));
     original = await call('vs2015_solution_configurations', { sessionId });
-    assert.equal(path.resolve((await call('vs2015_solution_status', { sessionId })).fullName).toLowerCase(), path.resolve(fixture.solution).toLowerCase());
+    const solution = await call('vs2015_solution_status', { sessionId });
+    assert.equal(path.resolve(solution.fullName).toLowerCase(), path.resolve(fixture.solution).toLowerCase());
+    assert.ok(Number.isInteger(solution.ideLocaleId) && solution.ideLocaleId > 0);
+    assert.equal(original.ideLocaleId, solution.ideLocaleId);
     const nested = original.projects.find(project => project.depth > 0 && !project.solutionFolder);
     assert.ok(nested, 'This test requires an owned fixture with a real project inside a solution folder');
     assert.ok(original.projects.some(project => project.uniqueName === nested.parentUniqueName && project.solutionFolder));
