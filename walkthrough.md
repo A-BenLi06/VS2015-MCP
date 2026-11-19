@@ -331,3 +331,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - 用调用方显式 exclusiveGuest、observedStatusFingerprint 和 allowUnknownStatus 表达独占使用及状态未知时的决定，移除原型中产品无法建立的 fresh-VM 证明门槛。已有采集和状态变化仍拒绝启动，仅本控制器的 captureId 可停止。
 - 不确定的包交换使 transport 失效，停止分发后禁止再次 Stop，关闭仅释放 transport 并记录可能继续的采集。ETL 头部只标 headerPlausible，事件语义等待离线分析。
 - 验证 Windows PowerShell 5.1 x86 生命周期测试 10 项通过，覆盖原生失败、已有采集、未知状态、错误 ETL 和 EOF 保留采集。公开 MCP 接入及本版实机采集继续完成。
+
+## 2026-11-19T21:16:19+08:00 — 拒绝重放已分发的 Guest WPR Stop
+
+补齐上一步导入时未实际落入文件的 Stop 状态保护。新增同 profile 再次出现时仍拒绝重复 Stop 的回归，生命周期 10 项全部通过，原生 stop 调用数量保持一次。移除测试中已不用的 fresh provenance 字段。

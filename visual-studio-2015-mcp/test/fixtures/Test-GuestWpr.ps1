@@ -13,10 +13,9 @@ function Expect-Code([scriptblock]$Body,[string]$Code,[bool]$MayContinue=$false)
     Assert-Test ($caught.Data['code'] -eq $Code) ('Wrong error: '+$caught.Message+' / '+$caught.Data['code'])
     Assert-Test (([bool]$caught.Data['operationMayContinue']) -eq $MayContinue) 'Wrong replay/continuation flag'
 }
-function New-Fixture([string]$Name,[bool]$Fresh=$true){
+function New-Fixture([string]$Name){
     $vm=[guid]::NewGuid().ToString('D');$device=[guid]::NewGuid().ToString('D');$start='2026-11-18T03:55:26.9186964Z'
     $session=@{identity=@{vmId=$vm;processId=42368;startTimeUtc=$start;executable='not-used-by-fake'};coreCon=@{device=@{};deviceId=$device;localeId=1033}}
-    $provenance=@{createdByController=$Fresh;historyComplete=$Fresh;ownershipToken=[guid]::NewGuid().ToString('D');vmId=$vm;xdeStartTimeUtc=$start}
     $factory={param($controller)
         return @{version='8.1.0.1';features='test';
             exchange={param($c,$operation,$arguments,$timeout)
@@ -67,7 +66,7 @@ Expect-Code {Start-Wp81GuestWprCapture $c @{exclusiveGuest=$true;allowUnknownSta
 Assert-Test (@($c.testState.operations|Where-Object operation -ne 'status').Count -eq 0) 'Foreign recording was mutated'
 $null=Close-Wp81GuestWprController $c;$tests.Add(@{name='foreign recording refuses every mutation';passed=$true})
 
-$c=New-Fixture 'unknown-status' $false;$s=Get-Wp81GuestWprStatus $c
+$c=New-Fixture 'unknown-status';$s=Get-Wp81GuestWprStatus $c
 Expect-Code {Start-Wp81GuestWprCapture $c @{exclusiveGuest=$true;observedStatusFingerprint=$s.status.fingerprint;profiles=@('cpu')}} 'GUEST_WPR_STATUS_UNKNOWN'
 Assert-Test (@($c.testState.operations|Where-Object operation -eq 'start').Count -eq 0) 'Unknown status started without explicit acknowledgement'
 $null=Close-Wp81GuestWprController $c;$tests.Add(@{name='unknown status needs explicit acknowledgement';passed=$true})
@@ -95,6 +94,9 @@ $null=Close-Wp81GuestWprController $c;$tests.Add(@{name='unowned capture ID refu
 $c=New-Fixture 'bad-etl';$capture=Start-Fixture $c;$c.testState.badEtl=$true
 Expect-Code {Stop-Wp81GuestWprCapture $c @{captureId=$capture.captureId;exclusiveGuest=$true}} 'GUEST_WPR_STOP_UNCONFIRMED' $true
 Assert-Test ($c.captures[$capture.captureId].state -eq 'stop-unconfirmed') 'Invalid ETL was accepted'
+$c.testState.activeProfiles=@('CPU.Verbose.Memory')
+Expect-Code {Stop-Wp81GuestWprCapture $c @{captureId=$capture.captureId;exclusiveGuest=$true}} 'GUEST_WPR_STOP_ALREADY_DISPATCHED' $true
+Assert-Test (@($c.testState.operations|Where-Object operation -eq 'stop').Count -eq 1) 'Unconfirmed Stop was replayed'
 $null=Close-Wp81GuestWprController $c;$tests.Add(@{name='invalid downloaded ETL remains unconfirmed';passed=$true})
 
 $c=New-Fixture 'close-recording';$capture=Start-Fixture $c;$closed=Close-Wp81GuestWprController $c

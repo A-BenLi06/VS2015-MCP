@@ -221,6 +221,9 @@ function Stop-Wp81GuestWprCapture {
     if(-not $id -or $id -cne $Controller.activeCaptureId -or -not $Controller.captures.ContainsKey($id)){throw (New-GuestWprError 'GUEST_WPR_CAPTURE_NOT_OWNED' 'Stop requires this controller''s active capture ID.')}
     if((Get-GuestWprValue $Request 'exclusiveGuest') -isnot [bool] -or (Get-GuestWprValue $Request 'exclusiveGuest') -ne $true){throw (New-GuestWprError 'GUEST_WPR_EXCLUSIVE_REQUIRED' 'Confirm the same exclusive guest session before stopping.')}
     $record=$Controller.captures[$id]
+    if($record.state -notin @('recording','start-unconfirmed')){
+        throw (New-GuestWprError 'GUEST_WPR_STOP_ALREADY_DISPATCHED' 'Stop was already dispatched. Inspect the receipt and native status before manual recovery.' (Get-GuestWprCaptureView $record) $true)
+    }
     $status=(Get-Wp81GuestWprStatus $Controller).status
     if($status.state -ne 'recording' -or -not (Test-GuestWprProfileSet $status.profileIds $record.profileIds)){throw (New-GuestWprError 'GUEST_WPR_RECORDING_CHANGED' 'Active profiles no longer exactly match the owned capture; no stop or cancel was issued.' $status)}
     $record.state='stopping';$record.operationMayContinue=$true;Save-GuestWprCapture $Controller $record 'guestWprStopping'
