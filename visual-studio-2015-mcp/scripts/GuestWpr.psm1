@@ -31,7 +31,7 @@ function Get-GuestWprFileHash([string]$Path) {
 }
 function Write-GuestWprJson([string]$Path,$Value) {
     $directory=[IO.Path]::GetDirectoryName($Path);[void][IO.Directory]::CreateDirectory($directory)
-    $temp=Join-Path $directory ('.pending-'+[guid]::NewGuid().ToString('N')+'.json')
+    $temp=Join-Path $directory ('.'+[guid]::NewGuid().ToString('N')+'.json')
     try {
         $bytes=(New-Object Text.UTF8Encoding($false)).GetBytes(($Value|ConvertTo-Json -Depth 32))
         $file=New-Object IO.FileStream($temp,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
@@ -39,7 +39,7 @@ function Write-GuestWprJson([string]$Path,$Value) {
         # A unique previous receipt also preserves the lifecycle audit trail.
         # Passing a real backup path avoids Windows PowerShell5.1's null-to-empty
         # string conversion for File.Replace's optional backup filename.
-        if([IO.File]::Exists($Path)){[IO.File]::Replace($temp,$Path,(Join-Path $directory ('.previous-'+[guid]::NewGuid().ToString('N')+'.json')))}else{[IO.File]::Move($temp,$Path)}
+        if([IO.File]::Exists($Path)){[IO.File]::Replace($temp,$Path,(Join-Path $directory ('.'+[guid]::NewGuid().ToString('N')+'.json')))}else{[IO.File]::Move($temp,$Path)}
     } finally {if([IO.File]::Exists($temp)){[IO.File]::Delete($temp)}}
 }
 function Assert-GuestWprBinding($Controller) {
@@ -74,6 +74,8 @@ function New-Wp81GuestWprController {
         [Parameter(Mandatory)][string]$ArtifactRoot,[scriptblock]$OnEvent,
         [scriptblock]$TransportFactory)
     if($ArtifactRoot -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+[\\/])'){throw (New-GuestWprError 'GUEST_WPR_INVALID_PATH' 'ArtifactRoot must be an absolute drive or UNC path.')}
+    $longestPath=Join-Path ([IO.Path]::GetFullPath($ArtifactRoot)) ('capture-'+[guid]::Empty.ToString()+'\.'+[guid]::Empty.ToString('N')+'.json')
+    if($longestPath.Length -ge 260){throw (New-GuestWprError 'GUEST_WPR_PATH_TOO_LONG' 'Use a shorter VS2015_MCP_HISTORY directory for the legacy SDK file receiver.')}
     if($null -eq $PhoneSession.coreCon){throw (New-GuestWprError 'GUEST_WPR_BINDING_REQUIRED' 'Open the phone session with an exact CoreCon GUID, locale and validated endpoint mapping first.')}
     $identity=$PhoneSession.identity;$binding=$PhoneSession.coreCon
     # The injected transport is an INTERNAL test seam, never accepted from MCP JSON.
@@ -126,9 +128,9 @@ function Initialize-GuestWprTransport($Controller) {
 function Invoke-GuestWprCommand($Controller,[ValidateSet('status','start','stop')][string]$Operation,$Record,[int]$TimeoutMs=60000) {
     Assert-GuestWprBinding $Controller;Initialize-GuestWprTransport $Controller
     $argument=switch($Operation){'status'{'-status'}'start'{'-start '+($Record.profileIds -join ' ')+' -temppath '+$script:WprTempPath}'stop'{'-stop '+$Record.guestEtlPath+' '+$script:WprTempPath}}
-    $Controller.sequence++;$commandId=[guid]::NewGuid().ToString('N')
+    $Controller.sequence++
     $directory=if($null -ne $Record){Join-Path $Record.outputDirectory 'commands'}else{Join-Path $Controller.artifactRoot ('status-'+$Controller.controllerId)}
-    [void][IO.Directory]::CreateDirectory($directory);$path=Join-Path $directory ($Controller.sequence.ToString('D6')+'-'+$commandId+'.txt')
+    [void][IO.Directory]::CreateDirectory($directory);$path=Join-Path $directory ($Controller.sequence.ToString('D6')+'.txt')
     $dispatchUtc=Get-GuestWprUtc;$dispatchTicks=[Diagnostics.Stopwatch]::GetTimestamp();$dispatched=$false
     try {
         $dispatched=$true
@@ -219,7 +221,7 @@ function Start-Wp81GuestWprCapture {
         if($running.state -ne 'recording' -or -not (Test-GuestWprProfileSet $running.profileIds $profileIds)){throw (New-GuestWprError 'GUEST_WPR_START_UNCONFIRMED' 'The native status did not confirm exactly the requested profile set.' $running $true)}
         $record.startInterval.latestUtc=$running.native.completedAtUtc;$record.state='recording';$record.operationMayContinue=$false
         Save-GuestWprCapture $Controller $record 'guestWprRecording';return Get-GuestWprCaptureView $record
-    } catch {$cause=$_.Exception;$record.state='start-unconfirmed';$record.operationMayContinue=$true;try{Save-GuestWprCapture $Controller $record 'guestWprStartUnconfirmed'}catch{};throw (New-GuestWprError 'GUEST_WPR_START_UNCONFIRMED' 'The recording may have started. Inspect the durable receipt and native status; do not replay Start.' @{capture=(Get-GuestWprCaptureView $record);cause=$cause.Message;causeHresult=$cause.HResult} $true)}
+    } catch {$cause=$_.Exception;$record.state='start-unconfirmed';$record.operationMayContinue=$true;try{Save-GuestWprCapture $Controller $record 'guestWprStartUnconfirmed'}catch{};throw (New-GuestWprError 'GUEST_WPR_START_UNCONFIRMED' 'The recording may have started. Inspect the durable receipt and native status; do not replay Start.' @{capture=(Get-GuestWprCaptureView $record);cause=$cause.Message;causeHresult=$cause.HResult;causeDetails=$cause.Data['details']} $true)}
 }
 function Stop-Wp81GuestWprCapture {
     [CmdletBinding()]
@@ -255,7 +257,7 @@ function Stop-Wp81GuestWprCapture {
         if($record.lastStatus.state -eq 'recording'){throw (New-GuestWprError 'GUEST_WPR_STOP_UNCONFIRMED' 'The native status still reports an active recording after Stop.' $record.lastStatus $true)}
         Save-GuestWprCapture $Controller $record 'guestWprStopped';$Controller.activeCaptureId=$null
         return Get-GuestWprCaptureView $record
-    } catch {$cause=$_.Exception;$record.state='stop-unconfirmed';$record.operationMayContinue=$true;try{Save-GuestWprCapture $Controller $record 'guestWprStopUnconfirmed'}catch{};throw (New-GuestWprError 'GUEST_WPR_STOP_UNCONFIRMED' 'Stop may have executed. Inspect the durable receipt, artifact and native status before another mutation.' @{capture=(Get-GuestWprCaptureView $record);cause=$cause.Message;causeHresult=$cause.HResult} $true)}
+    } catch {$cause=$_.Exception;$record.state='stop-unconfirmed';$record.operationMayContinue=$true;try{Save-GuestWprCapture $Controller $record 'guestWprStopUnconfirmed'}catch{};throw (New-GuestWprError 'GUEST_WPR_STOP_UNCONFIRMED' 'Stop may have executed. Inspect the durable receipt, artifact and native status before another mutation.' @{capture=(Get-GuestWprCaptureView $record);cause=$cause.Message;causeHresult=$cause.HResult;causeDetails=$cause.Data['details']} $true)}
 }
 function Close-Wp81GuestWprController {
     [CmdletBinding()]
