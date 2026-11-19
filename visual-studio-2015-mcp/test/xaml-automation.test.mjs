@@ -150,7 +150,7 @@ test('XAML_ACTION_UNCONFIRMED preserves operationMayContinue and details across 
   assert.equal(formatted.error.details.nodeId, IDS.node);
 });
 
-test('compiled XamlAutomation helpers decode literals, base64, integers and reject malformed payloads', { skip: process.platform !== 'win32', timeout: 180000 }, async () => {
+test('compiled XamlAutomation helpers decode literals, base64, integers and reject malformed payloads', { skip: process.platform !== 'win32' || process.env.VS2015_TEST_INSTALLED_SDK !== '1', timeout: 180000 }, async () => {
   const pwsh = process.env.VS2015_MCP_PWSH ?? 'pwsh.exe';
   const buildOut = await run(pwsh, ['-NoProfile', '-File', path.join(product, 'scripts/Build-IdeBridge.ps1')], '{}');
   const built = JSON.parse(buildOut.replace(/^\uFEFF/, ''));

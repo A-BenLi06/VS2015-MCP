@@ -351,3 +351,9 @@ PhoneSessions 使用现有 PID/启动时间/VM GUID/CoreCon 双端点校验，�
 ## 2026-11-19T21:32:27+08:00 — 约束旧 CoreCon 文件接收路径并保留嵌套失败
 
 真实 status 成功，start 后原生日志下载未确认，原路径超过旧 SDK 的 MAX_PATH 范围。命令文件改为控制器内单调编号，原子写入临时文件使用短 GUID 名，初始化提前检查最终路径长度。保留内部异常 details 以便诊断已分发操作。3 项 WPR 测试通过，尚待重新实机确认。
+
+## 2026-11-19T21:42:05+08:00 — 修复 Windows CI 环境边界并验证真实 Guest WPR
+
+- GitHub 日志确认 guest identity、XAML 编译与完整 SDK 发现依赖本机 VS2015，改为 VS2015_TEST_INSTALLED_SDK=1 显式启用。普通 Windows 单元测试继续执行 PowerShell 逻辑。WPR 测试由 Node 创建并传递临时根目录，消除 .NET 与 Node 长短路径差异。
+- 启用 SDK 的本机完整套件 104/104 通过。真实公开 MCP status/start/stop 完成，返回 4,194,304 字节 ETL，run 9f306e10-271e-4f78-95ec-150cfbc94728，SHA256 49c3d0bba852ac23f43da75ddae233acb23723a3c6b529f607bbdb72bf57934f，关闭清理无警告。
+- 首次长路径失败留下的自有采集经相同 PID/启动时间/VM GUID/profile 和 receipt 核对后停止，恢复 ETL 保留在 TEMP/wpr-recover-0fdf2d02027a49df9db5da60ad29db94。新 ETL 离线解析成功，10,941 事件、145 CPU sample 事件，EventsLost/BuffersLost 均 0。该 smoke 覆盖系统采集生命周期，托管 GC、分配和应用热点归因尚未验证。

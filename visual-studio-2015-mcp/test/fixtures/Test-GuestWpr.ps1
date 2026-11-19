@@ -1,10 +1,10 @@
-param([Parameter(Mandatory=$true)][string]$ScriptsDirectory)
+param([Parameter(Mandatory=$true)][string]$ScriptsDirectory,[string]$OutputRoot)
 #requires -Version 5.1
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
 Import-Module (Join-Path $ScriptsDirectory 'GuestWpr.psm1') -Force -DisableNameChecking
 trap { [Console]::Error.WriteLine(($_.Exception.Data|ConvertTo-Json -Depth 20 -Compress));throw }
-$root=Join-Path ([IO.Path]::GetTempPath()) ('wpr-unit-'+[guid]::NewGuid().ToString('N'))
+$root=if($OutputRoot){$OutputRoot}else{Join-Path ([IO.Path]::GetTempPath()) ('wpr-unit-'+[guid]::NewGuid().ToString('N'))}
 $tests=New-Object 'Collections.Generic.List[object]'
 function Assert-Test($Condition,[string]$Message){if(-not $Condition){throw $Message}}
 function Expect-Code([scriptblock]$Body,[string]$Code,[bool]$MayContinue=$false){

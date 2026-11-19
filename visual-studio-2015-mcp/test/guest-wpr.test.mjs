@@ -78,15 +78,15 @@ test('guest WPR history preserves uncertain dispatch and binds artifacts to the 
 test('guest WPR native lifecycle rejects foreign captures, uncertain replay and invalid ETL', { skip: process.platform !== 'win32' }, async () => {
   const windows = process.env.SystemRoot ?? process.env.SYSTEMROOT;
   assert.ok(windows);
+  const root = await mkdtemp(path.join(os.tmpdir(), 'guest-wpr-native-'));
   const result = spawnSync(path.join(windows, 'SysWOW64/WindowsPowerShell/v1.0/powershell.exe'), [
     '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(product, 'test/fixtures/Test-GuestWpr.ps1'),
-    '-ScriptsDirectory', path.join(product, 'scripts'),
+    '-ScriptsDirectory', path.join(product, 'scripts'), '-OutputRoot', root,
   ], { encoding: 'utf8', windowsHide: true, timeout: 60000 });
   assert.equal(result.status, 0, result.stderr || result.error?.message);
   const outcome = JSON.parse(result.stdout);
   assert.equal(outcome.passed, 10);
   assert.equal(outcome.liveGuestUsed, false);
-  const relative = path.relative(os.tmpdir(), outcome.artifactRoot);
-  assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative));
-  await rm(outcome.artifactRoot, { recursive: true, force: true });
+  assert.equal(path.resolve(outcome.artifactRoot), path.resolve(root));
+  await rm(root, { recursive: true, force: true });
 });

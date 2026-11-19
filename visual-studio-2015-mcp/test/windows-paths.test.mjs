@@ -25,7 +25,7 @@ test('WindowsPaths resolves known folders and child SDK defaults without OS dire
   assert.ok(Array.isArray(result.programDirectories) && result.programDirectories.length >= 1);
 });
 
-test('VS2015, debug, profiler and phone CLI discovery succeed without inherited OS directory env vars', { skip: process.platform !== 'win32', timeout: 120000 }, async t => {
+test('VS2015, debug, profiler and phone CLI discovery succeed without inherited OS directory env vars', { skip: process.platform !== 'win32' || process.env.VS2015_TEST_INSTALLED_SDK !== '1', timeout: 120000 }, async t => {
   const client = new Client({ name: 'windows-paths-minimal-env', version: '1' });
   // Keep SystemRoot for Node/Win32 CSPRNG initialization while clearing all
   // optional program-directory and WINDIR environment variables (matching MCP stdio defaults).

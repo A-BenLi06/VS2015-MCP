@@ -26,7 +26,7 @@ function run(command, args, input = '') {
   });
 }
 
-test('GuestDebugAppIdentity and DebuggerLiterals reject fabricated or partial values', { skip: process.platform !== 'win32', timeout: 180000 }, async () => {
+test('GuestDebugAppIdentity and DebuggerLiterals reject fabricated or partial values', { skip: process.platform !== 'win32' || process.env.VS2015_TEST_INSTALLED_SDK !== '1', timeout: 180000 }, async () => {
   const pwsh = process.env.VS2015_MCP_PWSH ?? 'pwsh.exe';
   const built = JSON.parse(await run(pwsh, ['-NoProfile', '-File', path.join(product, 'scripts/Build-IdeBridge.ps1')], '{}'));
   assert.ok(built.executablePath, built.error?.message);
