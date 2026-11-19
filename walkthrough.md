@@ -312,3 +312,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - Expose `ObservedProgramIdentity` and `OnInvalidatePause()` hook on `DebugNavigation.Session` so pause invalidation notifies dependent state cleanly.
 - Add `vs2015_ide_guest_app_identity` to `PHONE_IDE_TOOL_ALLOWLIST` in `src/phone-session-manager.mjs` and compare observed package name, publisher, 4-part version, `applicationId`, and available raw `ProductId` against the bound manifest (`guest-matched`, `unconfirmed`, or `PHONE_GUEST_APP_MISMATCH`), leaving subsequent non-identity calls `project-only`.
 - Validation: `node --test test/*.test.mjs` passed 98/98 (including 22 `GuestIdentityTests.cs` assertions and `PhoneSession` mismatch/unconfirmed unit regressions); live isolated WP8.1 fixture IDE + emulator verified `applicationVerification: "guest-matched"` (and truthful `rawProductId.available: false` on WP8.1 `InvalidCastException`) and `test/integration/guest-app-identity.test.mjs` passed 2/2; all owned test IDE/XDE/TEMP artifacts were cleaned up.
+
+## 2026-11-19T20:51:08+08:00 — 接手 Antigravity 的 WinRT XAML 自动化实现
+
+- 接入暂停 UI 线程上的有界 XAML 树查询、快照节点 ID、受保护的 Invoke/ValuePattern/TextBox.Text 操作，并通过 PhoneSession 转发。
+- 共用严格的调试器字符串编解码，传递不确定执行的 operationMayContinue 和 details，操作分发后废弃旧节点，避免误重放。
+- 验证 npm test 全部 101 项通过，包括编译后的 C# 字符串、Base64、整数检查及公开 schema/错误传播。接手的实机回归与其准备脚本尚需修正和执行，当前提交记录该验证边界。

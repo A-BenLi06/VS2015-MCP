@@ -288,7 +288,11 @@ export class PhoneSessionManager {
     return this.public(record, await this.sdk(record, 'capture', { sessionId: record.backendId, path: output }, context));
   }); }
   ide(input, ctx = {}) {
-    const inheritedTimeout = input.timeoutMs ?? (input.toolName === 'vs2015_ide_debug_control' && input.arguments?.action === 'go' ? 120000 : 15000);
+    const inheritedTimeout = input.timeoutMs ?? (
+      input.toolName === 'vs2015_ide_debug_control' && input.arguments?.action === 'go' ? 120000
+      : input.toolName === 'vs2015_ide_xaml_tree' ? Math.max(25000, Number(input.arguments?.queryTimeoutMs ?? 15000) + 10000)
+      : 15000
+    );
     return this.enqueue(input.phoneSessionId, { ...input, timeoutMs: inheritedTimeout }, ctx, async (record, context) => {
     check(record.binding, 'PHONE_IDE_BINDING_REQUIRED', 'This phone session has no IDE binding.');
     const definition = this.ideDefinitions.get(input.toolName);

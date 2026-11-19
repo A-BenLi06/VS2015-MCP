@@ -102,6 +102,8 @@ internal static partial class Program {
             case "selectFrame": return SelectFrame(s,r);
             case "evaluate": return EvaluateInContext(s,r);
             case "guestDebugAppIdentity": return GuestDebugAppIdentity(s,r);
+            case "xamlTree": return XamlTree(s,r);
+            case "xamlAction": return XamlAction(s,r);
             case "documents": return Documents(s);
             case "openDocument": return OpenDocument(s,r);
             case "readDocument": return ReadDocument(s,r);

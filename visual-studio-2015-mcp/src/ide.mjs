@@ -3,7 +3,8 @@ import { invokeIde } from './ide-client.mjs';
 
 const text = z.string().min(1).max(4096).refine(value => !value.includes('\0'), 'Must not contain NUL');
 const sessionId = z.guid();
-const deadline = z.number().int().min(1000).max(600000).default(15000);
+const deadlineBounds = z.number().int().min(1000).max(600000);
+const deadline = deadlineBounds.default(15000);
 const session = { sessionId, timeoutMs: deadline };
 const limit = z.number().int().min(1).max(200).default(50);
 const phoneTargetGuard = z.object({ name: text, scope: z.enum(['project', 'activeConfiguration']), value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]) }).strict();
@@ -75,7 +76,7 @@ export const ideDefinitions = [
         if (value.action === 'delete' && !value.breakpointId) ctx.addIssue({ code: 'custom', message: 'Delete requires breakpointId.' });
       }), run: call('breakpoints') },
   { name: 'vs2015_ide_debug_control', description: 'Issue asynchronous IDE debugger commands and inspect events/wait for actual transitions. Optional expectedPhoneBinding rechecks the configuration, sole startup project, device property and saved manifest inside the same STA dispatch before executing; stop bypasses this guard for recovery. go defaults to a separate 120-second command budget for phone launch.',
-    schema: z.object({ ...session, timeoutMs: deadline.optional(), action: z.enum(['go', 'break', 'stepInto', 'stepOver', 'stepOut', 'stop']), expectedPhoneBinding: expectedPhoneBinding.optional() }),
+    schema: z.object({ ...session, timeoutMs: deadlineBounds.optional(), action: z.enum(['go', 'break', 'stepInto', 'stepOver', 'stepOut', 'stop']), expectedPhoneBinding: expectedPhoneBinding.optional() }),
     run: (input, ctx) => call('debugControl')({ ...input, timeoutMs: input.timeoutMs ?? (input.action === 'go' ? 120000 : 15000) }, ctx) },
   { name: 'vs2015_ide_debug_inspect', readOnly: true, description: 'Inspect debugger threads, current-thread stack frames, or locals of the current frame in break mode. Does not switch the developer selected thread/frame.',
     schema: z.object({ ...session, kind: z.enum(['threads', 'frames', 'locals']), limit, pauseId: z.guid().optional(), frameId: z.guid().optional() }), run: call('debugInspect') },
@@ -89,6 +90,20 @@ export const ideDefinitions = [
   { name: 'vs2015_ide_guest_app_identity', description: 'Explicitly evaluate fixed Windows Runtime SDK identity properties in the current paused debuggee. Requires current pause/frame tokens, preserves raw ProductId validity separately, and returns unconfirmed if execution context changes. SDK getters may execute application code. Does not infer that the observed guest matches a project.',
     schema: z.object({ ...session, pauseId: z.guid(), frameId: z.guid(), includeProductId: z.boolean().default(true), evaluationTimeoutMs: z.number().int().min(100).max(10000).default(3000) }),
     run: async (input, ctx) => call('guestDebugAppIdentity')({ ...input, expressionTimeoutMs: input.evaluationTimeoutMs }, ctx) },
+  { name: 'vs2015_ide_xaml_tree', description: 'Inspect a bounded WinRT XAML visual tree (Window.Current.Content or an observed rootNodeId subtree) in the current paused UI thread via standard SDK evaluation. Returns snapshot-scoped opaque nodeIds; read-only queries retire previous snapshot IDs.',
+    schema: z.object({ sessionId, timeoutMs: deadlineBounds.optional(), pauseId: z.guid(), frameId: z.guid().optional(), rootNodeId: z.guid().optional(),
+      queryTimeoutMs: z.number().int().min(1000).max(120000).default(15000), maxDepth: z.number().int().min(0).max(16).default(8),
+      maxNodes: z.number().int().min(1).max(500).default(100), maxChildren: z.number().int().min(1).max(128).default(64),
+      evaluationTimeoutMs: z.number().int().min(100).max(5000).default(1000) }),
+    run: async (input, ctx) => call('xamlTree')({ ...input, expressionTimeoutMs: input.evaluationTimeoutMs, timeoutMs: input.timeoutMs ?? Math.max(25000, (input.queryTimeoutMs ?? 15000) + 10000) }, ctx) },
+  { name: 'vs2015_ide_xaml_action', description: 'Execute a guarded WinRT XAML automation action (invoke via IInvokeProvider, setValue via IValueProvider, or explicit setText on an enabled non-read-only TextBox) on an observed nodeId in break mode. Retires snapshot IDs; never automatically retries uncertain dispatches.',
+    schema: z.object({ ...session, pauseId: z.guid(), frameId: z.guid().optional(), nodeId: z.guid(), action: z.enum(['invoke', 'setValue', 'setText']),
+      value: z.string().max(4096).refine(value => !value.includes('\0'), 'Must not contain NUL').optional(),
+      evaluationTimeoutMs: z.number().int().min(100).max(5000).default(1000) }).superRefine((value, ctx) => {
+        if (value.action === 'invoke' && value.value !== undefined) ctx.addIssue({ code: 'custom', message: 'invoke does not accept value.' });
+        if (value.action !== 'invoke' && value.value === undefined) ctx.addIssue({ code: 'custom', message: 'setValue and setText require value.' });
+      }),
+    run: async (input, ctx) => call('xamlAction')({ ...input, expressionTimeoutMs: input.evaluationTimeoutMs }, ctx) },
   { name: 'vs2015_ide_debug_wait', readOnly: true, description: 'Wait for the selected IDE debugger to reach design/run/break mode without blocking its STA message loop. Supply afterSequence from before go/step to require a newer debugger event, preventing an old break state from satisfying the wait. Cancellation only stops waiting; inspect events/reason/stack to identify a breakpoint.',
     schema: z.object({ ...session, mode: z.enum(['design', 'run', 'break']), afterSequence: z.number().int().nonnegative().optional(), pollIntervalMs: z.number().int().min(100).max(2000).default(250) }),
     run: async (input, ctx) => {

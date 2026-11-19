@@ -22,13 +22,14 @@ const inputSchema = z.discriminatedUnion('action', [
   z.object({ ...session, action: z.literal('button'), button: text }).strict(),
 ]);
 export function phoneSessionErrorResult(error) {
+  const details = error.details ?? error.backendError?.details;
   return { error: { code: error.code ?? (error instanceof z.ZodError ? 'PHONE_IDE_ARGUMENTS_INVALID' : 'PHONE_SESSION_ERROR'), message: error.message,
     ...(error.operationMayContinue !== undefined ? { operationMayContinue: error.operationMayContinue } : {}),
     ...(error.cleanupStatus !== undefined ? { cleanupStatus: error.cleanupStatus } : {}),
     ...(error.cleanupWarnings ? { cleanupWarnings: error.cleanupWarnings } : {}),
     ...(error.cleanupDetails ? { cleanupDetails: error.cleanupDetails } : {}),
     ...(error.backendError ? { backendError: error.backendError } : {}),
-    ...(error.backendError?.details ? { details: error.backendError.details } : {}),
+    ...(details ? { details } : {}),
     ...(error.reason ? { reason: error.reason } : {}),
   } };
 }
