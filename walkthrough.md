@@ -377,3 +377,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 新增有界 JSON/流式 ETL 客户端：明确 HTTP 同意、每连接 CA 与环境变量 Basic 凭据、CSRF Cookie/请求头、禁用重定向和自动重试，保持系统 TLS 校验。
 - 超时和取消区分分发前/后；已分发 mutation 返回 operationMayContinue。临时下载失败清理，完成后记录字节数/SHA256，ETL 头部检查不冒充事件解析。
 - 验证 5 项真实本地 HTTP 服务测试通过，覆盖认证、跨源重定向、CSRF、查询编码、超时、不重放、文件清理和非法产物。Win10M 专用模拟器 Portal 端口不响应，桌面窗口捕获两次超时；本阶段未宣称客体 Portal 验证通过。
+
+## 2026-11-20T01:13:49+08:00 — Device Portal 采集状态机与持久记录
+
+- 增加精确 guest IP/VM/OS 身份绑定，按设备实际 JSON profile 目录及 JSON Pointer 选择 profile，校验状态和目录指纹。拒绝已有/未知采集，记录独占前提与外部客户端限制。
+- WPR Start/Stop 先落盘 receipt；失联后不自动重放。兼容 Stop 直接返回 ETL 或写入设备文件，单独下载可重试，按前后文件元数据选取，保留歧义及头部/事件验证边界。
+- 原始读取和采集结果进入 history；关闭报告可能继续的采集。10 项 HTTP/生命周期测试全部通过，包含不确定开始/停止、外部状态变化、歧义文件和下载恢复。
