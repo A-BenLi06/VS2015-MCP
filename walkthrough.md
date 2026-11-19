@@ -357,3 +357,7 @@ PhoneSessions 使用现有 PID/启动时间/VM GUID/CoreCon 双端点校验，�
 - GitHub 日志确认 guest identity、XAML 编译与完整 SDK 发现依赖本机 VS2015，改为 VS2015_TEST_INSTALLED_SDK=1 显式启用。普通 Windows 单元测试继续执行 PowerShell 逻辑。WPR 测试由 Node 创建并传递临时根目录，消除 .NET 与 Node 长短路径差异。
 - 启用 SDK 的本机完整套件 104/104 通过。真实公开 MCP status/start/stop 完成，返回 4,194,304 字节 ETL，run 9f306e10-271e-4f78-95ec-150cfbc94728，SHA256 49c3d0bba852ac23f43da75ddae233acb23723a3c6b529f607bbdb72bf57934f，关闭清理无警告。
 - 首次长路径失败留下的自有采集经相同 PID/启动时间/VM GUID/profile 和 receipt 核对后停止，恢复 ETL 保留在 TEMP/wpr-recover-0fdf2d02027a49df9db5da60ad29db94。新 ETL 离线解析成功，10,941 事件、145 CPU sample 事件，EventsLost/BuffersLost 均 0。该 smoke 覆盖系统采集生命周期，托管 GC、分配和应用热点归因尚未验证。
+
+## 2026-11-19T21:44:57+08:00 — 可重复的公开 WPR 实机回归
+
+新增 VS2015_TEST_WP81_WPR_CONTEXT opt-in 回归，要求 TEMP 自有 XDE 上下文和精确启动时间/VM 身份。测试通过公开 MCP 检查 status/start/stop、下载字节数和 SHA256、history artifact 一致性及无警告清理。失败 Stop 不重放。实际 WP8.1 运行 34.3 秒通过，证据 run 19b663a3-151a-4c88-8b88-2b68f2298b29，调用记录 TEMP/wpr-runtime-xUgoBP。
