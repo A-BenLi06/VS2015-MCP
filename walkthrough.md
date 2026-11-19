@@ -408,3 +408,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 完整 SDK 单元套件 118/118 通过；标准集成套件 17 通过、24 个显式条件测试跳过，另有真实客体 ETL/PerfView 公共 MCP 回归通过。MCP 取消和 EOF 两项进程树清理通过，remainingPids 为空。0.5.0 握手、94 工具、6 资源与 Portal 错误码传播已验证。
 - Win10M shell 鼠标滑动仅改变焦点，独立 SDK TouchInfo 原型 60 秒超时，未合入未验证实现。两次自有 Win10M XDE 测试均已关闭，VM 最终 EnabledState=3；原用户 WP8.1 与三个 IDE 保留。
 - 当前剩余范围如实记录：Win10M Portal 真实端点采集（本机端口无响应）、通用 shell 触摸、手机托管堆、完整符号和应用热点归因。已通过模拟 HTTP 和真实 WP8.1 ETL 的证据不能替代这些验证。
+
+## 2026-11-20T02:17:35+08:00 — 恢复 Win10M 可见运行并核对 Portal 前置条件
+
+- 根据用户反馈重新启动专用 Win10M 14393 模拟器并置前，确认 shellReady/toolsReady、768×1280 客体截图和 CoreCon 双端点绑定。保留模拟器运行供用户设置；不再在本轮收尾调用 phone_stop。
+- 真实公开 MCP open/status/endpoint/close 通过；close 返回 vmClosed:false、cleanupWarnings 为空。HTTPS Portal connect 返回 PORTAL_TIMEOUT、operationMayContinue:false。HTTP 80/10080 和 TCP 443/10443 均无响应，不能据此区分未启用服务与网络不可达，未宣称 Portal 采集成功。证据保留 TEMP/win10m-reopen-fbwzMR/results.json。
+- 手机指南补充启动与 Portal 启用的区分、保留模拟器的会话关闭方式、重启后身份刷新、USB localhost:10080 与 guest IP 的区别，以及 Basic 认证和浏览器配对状态边界。依据微软 Mobile Device Portal 文档及实际工具返回复核；git diff --check 通过。

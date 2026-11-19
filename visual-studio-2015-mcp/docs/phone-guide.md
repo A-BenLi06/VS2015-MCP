@@ -159,7 +159,11 @@ CaptureImage 未生成产物时会返回错误。可结合 shellReady、toolsRea
 
 Windows Mobile Device Portal从Windows10 Mobile1511开始提供，需要设备上开启开发者模式、发现与Portal。WP8.1没有同等Portal。官方列出USB与局域网连接方式及初次配对流程；地址应取自设备设置或实际端点信息。[Mobile Device Portal官方说明](https://learn.microsoft.com/en-us/previous-versions/windows/uwp/debug-test-perf/device-portal-mobile)
 
-v0.5.0 的 `phone_session_portal_*` 工具使用持久 PhoneSession。`phone_session_portal_connect` 要求先绑定 CoreCon GUID/locale，并用实际 guest IP 提供 `baseUrl`，例如设备确实监听时的 `http://169.254.x.y:10080`。端口来自设备设置，不自动探测或假定。HTTP 需 `allowInsecureHttp:true`；HTTPS 保持证书和主机名校验，可通过 `caPath` 提供 PEM CA。`usernameEnv/passwordEnv` 指定服务进程的凭据变量名，不能直接传密码。工具拒绝重定向，不启用 Portal、不完成配对，也不自动重试变更请求。
+启动模拟器与启用 Portal 是两个步骤。先用 `phone_devices` 选择配置并调用 `phone_start`，再刷新 `phone_discover` 的进程身份，检查 `phone_status` 的 shellReady/toolsReady，并用 `phone_screenshot` 确认手机画面。随后在手机设置的开发者页面检查 Device Portal 和实际连接地址；模拟器就绪不代表 Portal 已监听。TCP 超时不能单独证明 Portal 未启用，也可能是网络不可达。
+
+v0.5.0 的 `phone_session_portal_*` 工具使用持久 PhoneSession。`phone_session_portal_connect` 要求先绑定 CoreCon GUID/locale，并用实际 guest IP 提供 `baseUrl`。协议和端口来自设备设置，不自动探测或假定；微软文档中的 `http://127.0.0.1:10080` 是 USB 转发地址，不能直接替换为模拟器 guest IP。当前会话绑定不接受 localhost 转发端点。HTTP 需 `allowInsecureHttp:true`；HTTPS 保持证书和主机名校验，可通过 `caPath` 提供 PEM CA。`usernameEnv/passwordEnv` 指定服务进程的 Basic 认证凭据变量名，不能直接传密码；浏览器配对状态不会自动传递给 MCP。工具拒绝重定向，不启用 Portal、不完成配对，也不自动重试变更请求。
+
+需要保留模拟器供人工设置或继续调试时，只调用 `phone_session_close` 释放 MCP 会话，并核对 `vmClosed:false`；`phone_stop` 会请求关闭模拟器。重启后必须重新读取 processId/startTimeUtc/vmId，不能沿用上次运行的会话参数。
 
 `phone_session_portal_read` 的 `resource` 可选 `os`、`packages`、`processes`、`systemPerformance`、`etwProviders`、`profiles`、`traceFiles`，保留原始 JSON 并返回 history artifact。端点不支持、认证失败与连接超时分别报错。调用前核对原 VM/进程/CoreCon 地址对与连接时的 OS 信息。
 
