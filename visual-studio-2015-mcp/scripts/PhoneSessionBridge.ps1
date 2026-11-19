@@ -29,6 +29,9 @@ try {
             $code=if($_.Exception.Data.Contains('code')){[string]$_.Exception.Data['code']}else{'PHONE_SESSION_ERROR'}
             $response=@{id=$id;error=@{code=$code;message=$_.Exception.Message}}
             if($_.Exception.Data.Contains('cleanupWarnings')){$response.error.cleanupWarnings=@($_.Exception.Data['cleanupWarnings'])}
+            foreach($field in @('operationMayContinue','details')){
+                if($_.Exception.Data.Contains($field)){$response.error[$field]=$_.Exception.Data[$field]}
+            }
         }
         [Console]::Out.WriteLine(($response | ConvertTo-Json -Depth 20 -Compress));[Console]::Out.Flush()
     }

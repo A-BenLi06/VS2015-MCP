@@ -1,5 +1,6 @@
 # Persistent XDE session lifecycle; SDK primitives live in PhoneCore.psm1.
 Import-Module (Join-Path $PSScriptRoot 'PhoneCore.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'GuestWpr.psm1') -Force -DisableNameChecking
 $script:Session=$null
 $script:BoundTarget=$null
 
@@ -89,7 +90,7 @@ function Open-PhoneSession($Request) {
     try {
         $lease=Enter-XdeLease $process
         $client=Get-Client $process
-        $session=@{id=[guid]::NewGuid().ToString();identity=$identity;process=$process;client=$client;coreCon=$null;inputObject=$null;heldKeys=(New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::OrdinalIgnoreCase));lease=$lease}
+        $session=@{id=[guid]::NewGuid().ToString();identity=$identity;process=$process;client=$client;coreCon=$null;guestWpr=$null;inputObject=$null;heldKeys=(New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::OrdinalIgnoreCase));lease=$lease}
         $null=Confirm-PhoneSessionTarget $session
         Open-PhoneCoreConBinding $session $Request
         $script:BoundTarget=$identity;$script:Session=$session
@@ -151,6 +152,7 @@ function Close-PhoneSession($Request) {
     $session=Get-RequiredPhoneSession $Request
     $warnings=New-Object 'System.Collections.Generic.List[string]'
     $unreleased=@()
+    $guestWprCleanup=$null
     try {
         $identityValid=$false
         try{$null=Confirm-PhoneSessionTarget $session;$identityValid=$true}catch{$warnings.Add($_.Exception.Message)}
@@ -162,13 +164,19 @@ function Close-PhoneSession($Request) {
         }
         $unreleased=@($session.heldKeys.Keys)
     } finally {
+        if($session.guestWpr){
+            try{
+                $guestWprCleanup=Close-Wp81GuestWprController $session.guestWpr
+                foreach($warning in $guestWprCleanup.warnings){$warnings.Add(($warning|ConvertTo-Json -Compress))}
+            }catch{$warnings.Add($_.Exception.Message)}
+        }
         if($session.inputObject -and $session.inputObject.feature){try{$session.inputObject.feature.Dispose()}catch{$warnings.Add($_.Exception.Message)}}
         try{Close-PhoneCoreConBinding $session}catch{$warnings.Add($_.Exception.Message)}
         try{$session.client.Dispose()}catch{$warnings.Add($_.Exception.Message)}
         try{Exit-XdeLease $session.lease}catch{$warnings.Add($_.Exception.Message)}
         $script:Session=$null
     }
-    return @{sessionId=$session.id;closed=$true;vmClosed=$false;unreleasedKeys=$unreleased;cleanupWarnings=@($warnings.ToArray())}
+    return @{sessionId=$session.id;closed=$true;vmClosed=$false;unreleasedKeys=$unreleased;cleanupWarnings=@($warnings.ToArray());guestWprCleanup=$guestWprCleanup}
 }
 function Close-AllPhoneSessions {
     if($script:Session){return Close-PhoneSession ([pscustomobject]@{sessionId=$script:Session.id})}
@@ -182,6 +190,18 @@ function Invoke-PhoneSessionRequest($Request) {
     $session.process=Confirm-PhoneSessionTarget $session
     $mapping=Confirm-PhoneCoreConMapping $session
     if($operation -eq 'identity'){return @{sessionId=$session.id;identity=$session.identity;crossChannelMapping=$mapping;inputClientCreated=($null -ne $session.inputObject);heldKeys=@($session.heldKeys.Keys)}}
+    if($operation -in @('guestWprStatus','guestWprStart','guestWprStop')){
+        if(-not $session.guestWpr){
+            if($operation -ne 'guestWprStatus'){throw (New-PhoneSessionError 'GUEST_WPR_STATUS_REQUIRED' 'Observe WPR status in this phone session before starting a capture.')}
+            $assertBinding={param($bound) $null=Confirm-PhoneSessionTarget $bound; $null=Confirm-PhoneCoreConMapping $bound}
+            $session.guestWpr=New-Wp81GuestWprController -PhoneSession $session -AssertBinding $assertBinding -ArtifactRoot ([string](Require-Value $Request 'artifactRoot'))
+        }
+        switch($operation){
+            'guestWprStatus' {return @{sessionId=$session.id;capabilities=(Get-Wp81GuestWprCapabilities);observation=(Get-Wp81GuestWprStatus $session.guestWpr)}}
+            'guestWprStart' {return Start-Wp81GuestWprCapture $session.guestWpr $Request}
+            'guestWprStop' {return Stop-Wp81GuestWprCapture $session.guestWpr $Request}
+        }
+    }
     if($operation -notin @('status','endpoint','capture','tap','swipe','key','text','button')){throw (New-PhoneSessionError 'PHONE_UNKNOWN_OPERATION' 'Unsupported persistent emulator operation.')}
     if($operation -eq 'key'){return Send-PhoneSessionKeys $session $Request}
     $inputObject=$null

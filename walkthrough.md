@@ -335,3 +335,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-19T21:16:19+08:00 — 拒绝重放已分发的 Guest WPR Stop
 
 补齐上一步导入时未实际落入文件的 Stop 状态保护。新增同 profile 再次出现时仍拒绝重复 Stop 的回归，生命周期 10 项全部通过，原生 stop 调用数量保持一次。移除测试中已不用的 fresh provenance 字段。
+
+## 2026-11-19T21:17:37+08:00 — 将 Guest WPR 绑定到持久手机控制器
+
+PhoneSessions 使用现有 PID/启动时间/VM GUID/CoreCon 双端点校验，在同一个已连接设备上执行 WPR status/start/stop。关闭先释放 WPR stream，返回可能继续的采集 receipt，再释放 CoreCon。桥接完整传递 operationMayContinue 和 details，Node 保留该不确定标志。相关传输及 PowerShell 生命周期 14 项测试通过。

@@ -138,7 +138,10 @@ export class PhoneBridgeClient {
         this.fail(child, new PhoneBridgeError('PHONE_PROTOCOL_ERROR', 'The phone emulator bridge returned an unexpected response ID or envelope.')); return;
       }
       this.active = null; this.cleanup(item);
-      if (message.error) item.failure(new PhoneBridgeError(message.error.code || 'PHONE_OPERATION_FAILED', message.error.message || 'The phone emulator operation failed.', { backendError: message.error }));
+      if (message.error) item.failure(new PhoneBridgeError(message.error.code || 'PHONE_OPERATION_FAILED', message.error.message || 'The phone emulator operation failed.', {
+        backendError: message.error,
+        ...(own(message.error, 'operationMayContinue') ? { operationMayContinue: message.error.operationMayContinue } : {}),
+      }));
       else item.success(message.result);
       void this.pump();
     }
