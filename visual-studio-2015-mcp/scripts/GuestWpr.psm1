@@ -79,7 +79,9 @@ function New-Wp81GuestWprController {
     # The injected transport is an INTERNAL test seam, never accepted from MCP JSON.
     if($null -eq $TransportFactory){
         $version=[Diagnostics.FileVersionInfo]::GetVersionInfo([string]$identity.executable)
-        if($version.FileMajorPart -ne 8 -or $version.FileMinorPart -ne 1){throw (New-GuestWprError 'GUEST_WPR_PLATFORM_UNSUPPORTED' 'This adapter requires the installed WP8.1 XDE target. Win10M uses its own feature-probed backend.')}
+        # WP8.1 ships XDE 8.0.15116. The guest agent handshake below identifies
+        # the supported 8.1 protocol before any WPR command is dispatched.
+        if($version.FileMajorPart -ne 8){throw (New-GuestWprError 'GUEST_WPR_PLATFORM_UNSUPPORTED' 'This adapter requires XDE 8 and a WP8.1 developer-agent handshake.')}
     }
     $target=[ordered]@{vmId=[string]$identity.vmId;xdeProcessId=[int]$identity.processId;xdeStartTimeUtc=[string]$identity.startTimeUtc;
         coreConDeviceId=[string]$binding.deviceId;localeId=[int]$binding.localeId}

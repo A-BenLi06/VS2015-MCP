@@ -343,3 +343,7 @@ PhoneSessions 使用现有 PID/启动时间/VM GUID/CoreCon 双端点校验，�
 ## 2026-11-19T21:20:40+08:00 — 公开 Guest WPR MCP 工具与历史 artifact
 
 新增 phone_session_wpr_status/start/stop，复用 PhoneSession 的串行队列和设备绑定。首次 status 创建或加入历史 run，命令返回和失败均写入 guest-wpr artifact，采集 receipt/原生日志/ETL 放在 run 内。Stop 可在 IDE 已退出时清理原设备。测试发现 Node 继承环境中的 PSModulePath 不能自动解析 Get-FileHash，改用 .NET 流式 SHA256。相关 schema、历史错误传播、生命周期及会话管理 42 项测试通过。
+
+## 2026-11-19T21:27:15+08:00 — 由客体协议确认 WP8.1 WPR 版本
+
+真实 MCP status 揭示 WP8.1 所带 XDE 文件版本是 8.0.15116，不能以 minor=1 判定 WP8.1。后端先接受 XDE major 8，再由 developer-agent 8.1 握手确认协议，命令分发前继续拒绝其他协议。3 项 WPR 测试通过；完整套件在此修正前已通过 104 项，实际采集继续验证。
