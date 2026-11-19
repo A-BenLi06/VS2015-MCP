@@ -2,7 +2,7 @@
 
 面向 Windows 的本地 stdio MCP 服务，提供 VS2015 构建、测试、SDK CLI、编译诊断、调试、性能采样与历史比较，以及 Windows Phone 8.1 / Windows 10 Mobile 模拟器操控。
 
-**v0.4.0 — PhoneSession 与客体自动化** 在 IDE 自动化基础上增加持久手机会话、WinRT XAML 控件树查询与受保护操作、WP8.1 Guest WPR CPU 采集和历史 artifact。现有 CLI、IDE 与手机工具保留，共 88 项工具。详见 [IDE 指南](docs/ide-guide.md)、[手机模拟器指南](docs/phone-guide.md) 和[手机客体性能接入现状](docs/mobile-performance.md)。
+**v0.5.0 — Device Portal 与客体事件报告** 提供 94 项工具，新增绑定 PhoneSession 的 Portal 连接、进程/性能读取、WPR 采集与独立下载，以及 PerfView 客体 ETL 事件汇总。Portal 通过 HTTP 服务回归，Win10M 真实端点验证仍待完成；WP8.1 ETL 事件报告已通过真实 MCP 验证。详见 [IDE 指南](docs/ide-guide.md)、[手机模拟器指南](docs/phone-guide.md) 和[手机客体性能接入现状](docs/mobile-performance.md)。
 
 协议层使用官方 MCP SDK；原生命令由 PowerShell 7 执行。XDE 的 x86 .NET Framework 程序集通过独立的 32 位 Windows PowerShell 5.1 进程调用。无需 VS 扩展，不下载 SDK、镜像或模型，也不调用 AI API。
 
@@ -127,3 +127,9 @@ WP8.1 WPR 提供 `phone_session_wpr_status`、`phone_session_wpr_start`、`phone
 2026-11-19（UTC+08:00）验证了 104 项完整单元测试、WP8.1 XAML 文本与单次 Invoke 实机流程、WP8.1 WPR 公开 MCP 采集与历史一致性。XAML 实机截图显示 `Result: 44` 和含引号、反斜杠、中文的完整文本。WPR ETL 经 PerfView 离线解析含 10,941 事件、145 个 CPU sample 事件，EventsLost 和 BuffersLost 均为 0。该采集验证覆盖系统采集生命周期，应用热点归因和托管 GC/堆仍待验证。
 
 通用单元测试使用 `npm test`。已安装 VS2015/手机 SDK 的机器可设置 `$env:VS2015_TEST_INSTALLED_SDK='1'` 运行全部 SDK 相关检查。自有手机实机测试分别使用 `VS2015_TEST_WP81_XAML_CONTEXT` 和 `VS2015_TEST_WP81_WPR_CONTEXT`，上下文格式见手机指南。`test/fixtures/New-Wp81Fixture.ps1 -XamlAutomation` 生成对应测试工程和断点元数据。
+
+### Device Portal 与事件内容
+
+在已绑定 CoreCon 的 PhoneSession 上调用 `phone_session_portal_connect`，传设备实际 guest IP 的 HTTP(S) origin。认证通过服务端环境变量名提供；HTTPS 可指定本连接使用的 PEM CA 文件。用 `phone_session_portal_read` 查询设备支持的资源，`phone_session_portal_wpr_status/start/stop/download` 完成显式 profile 选择和采集生命周期。设备必须预先启用 Portal 并完成所需配对；工具不修改设备的安全设置。
+
+`vs2015_perfview_report({analysis:"eventsXml",...})` 将 ETL 复制到独立目录，返回事件类型计数、CPU sample 事件数、原样 loss header 和进程生命周期线索。2026-11-20（UTC+08:00）公开 MCP 回归解析 WP8.1 trace 得到 10,941 事件、145 个 CPU sample 事件、17 个未解码事件，history 与返回一致。未解码事件和丢失字段会保留；样本数不作为 CPU 毫秒，PID/name 聚合不作为完整应用归因。

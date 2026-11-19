@@ -149,15 +149,21 @@ CoreCon应用身份与Windows10 UWP包身份不完全相同。只有当所需应
 
 WP8.1 与 Win10M 已在专用 TEMP 应用中完成 IDE 构建、解决方案及项目部署、guest 输入、断点、locals、单步、恢复和截图。两个平台的持久会话也已同时运行，核对独立身份、关闭一个会话后另一个继续工作及清理结果。
 
-2026-11-19（UTC+08:00）新增 WP8.1 XAML 和 WPR 公开 MCP 实机验证。XAML 覆盖树与子树、文本写入、一次 Invoke、旧节点拒绝及恢复后的截图。WPR 覆盖状态、CPU profile 启动、停止、ETL 下载、SHA256 和历史 artifact 一致性。Win10M WPR 和真机性能尚待实现或验证。
+2026-11-19（UTC+08:00）新增 WP8.1 XAML 和 WPR 公开 MCP 实机验证。XAML 覆盖树与子树、文本写入、一次 Invoke、旧节点拒绝及恢复后的截图。WPR 覆盖状态、CPU profile 启动、停止、ETL 下载、SHA256 和历史 artifact 一致性。v0.5.0 已实现 Win10M Portal 适配与 HTTP 回归，真实设备 WPR 仍待验证。
+
+2026-11-20（UTC+08:00）补充：Win10M 14393 的模拟器 shell 滑动未通过本轮验证，鼠标路径只改变焦点，SDK 触摸原型请求超时。既有应用点击验证不能证明通用 shell 触摸手势；未将未确认的触摸实现合入。
 
 CaptureImage 未生成产物时会返回错误。可结合 shellReady、toolsReady、SDK/镜像及 Hyper-V 状态检查已有实例。
 
-## Device Portal：官方备用方案，当前MCP尚未实现
+## Device Portal
 
 Windows Mobile Device Portal从Windows10 Mobile1511开始提供，需要设备上开启开发者模式、发现与Portal。WP8.1没有同等Portal。官方列出USB与局域网连接方式及初次配对流程；地址应取自设备设置或实际端点信息。[Mobile Device Portal官方说明](https://learn.microsoft.com/en-us/previous-versions/windows/uwp/debug-test-perf/device-portal-mobile)
 
-本MCP目前没有 `phone_portal_*` 或通用Portal HTTP工具。`phone_endpoint` 只返回地址，不会自动启用Portal、建立信任或完成配对。下表是可用于未来集成或外部客户端的官方API，不是当前工具名称。
+v0.5.0 的 `phone_session_portal_*` 工具使用持久 PhoneSession。`phone_session_portal_connect` 要求先绑定 CoreCon GUID/locale，并用实际 guest IP 提供 `baseUrl`，例如设备确实监听时的 `http://169.254.x.y:10080`。端口来自设备设置，不自动探测或假定。HTTP 需 `allowInsecureHttp:true`；HTTPS 保持证书和主机名校验，可通过 `caPath` 提供 PEM CA。`usernameEnv/passwordEnv` 指定服务进程的凭据变量名，不能直接传密码。工具拒绝重定向，不启用 Portal、不完成配对，也不自动重试变更请求。
+
+`phone_session_portal_read` 的 `resource` 可选 `os`、`packages`、`processes`、`systemPerformance`、`etwProviders`、`profiles`、`traceFiles`，保留原始 JSON 并返回 history artifact。端点不支持、认证失败与连接超时分别报错。调用前核对原 VM/进程/CoreCon 地址对与连接时的 OS 信息。
+
+下表列出相关官方 API。当前工具覆盖包列表和 OS 读取，Portal 包部署及应用启停尚未开放；已有 CoreCon/部署工具继续适用。
 
 | HTTP请求 | 用途 |
 |---|---|
@@ -171,7 +177,16 @@ Windows Mobile Device Portal从Windows10 Mobile1511开始提供，需要设备�
 
 微软文档明确列出这些相关API的Mobile支持；任意PID终止则没有Mobile支持。核心参考没有提供可直接推广到Mobile的截图或触控接口，不能把Xbox或HoloLens端点套用过来。[Device Portal核心API](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/device-portal-api-core)
 
-taskmanager/app所需的 `appid` 和 `package` 在文档中称为hex64编码。微软官方wrapper的 `Hex64Encode` 实际使用UTF-8字节的Base64；构造URL时还需正确转义查询值。它与CoreCon ProductID GUID不是同一套身份参数。[TaskManager源码](https://raw.githubusercontent.com/microsoft/WindowsDevicePortalWrapper/master/WindowsDevicePortalWrapper/WindowsDevicePortalWrapper.Shared/Core/TaskManager.cs)、[编码实现](https://raw.githubusercontent.com/microsoft/WindowsDevicePortalWrapper/master/WindowsDevicePortalWrapper/WindowsDevicePortalWrapper.Shared/Utilities.cs)
+taskmanager/app所需的 `appid` 和 `package` 在文档中称为hex64编码。微软官方wrapper的 `Hex64Encode` 实际使用UTF-8字节的Base64；构造URL时还需正确转义查询值。它与CoreCon ProductID GUID不是同一套身份参数。[TaskManager源码](https://raw.githubusercontent.com/microsoft/WindowsDevicePortalWrapper/main/WindowsDevicePortalWrapper/WindowsDevicePortalWrapper.Shared/Core/TaskManager.cs)、[编码实现](https://raw.githubusercontent.com/microsoft/WindowsDevicePortalWrapper/main/WindowsDevicePortalWrapper/WindowsDevicePortalWrapper.Shared/Utilities.cs)
+
+### Portal WPR
+
+1. `phone_session_portal_wpr_status` 返回 `status`、`profiles` 及两份指纹。status 必须为 `idle`、mode 为 `normal`。
+2. 从实际 profile JSON 中选择供 API 使用的 profile 名称字符串，以 JSON Pointer 传 `profilePointer`。例如返回 `{"profiles":[{"id":"actual-profile"}]}` 时使用 `/profiles/0/id`；这是格式示例，字段名和值应以设备响应为准。传 `observedStatusFingerprint`、`profilesFingerprint`、`operation` 和 `exclusiveGuest:true` 调用 start，保存 `captureId`。
+3. 执行应用操作后调用 stop，提供同一 captureId 和 exclusiveGuest。它只分发一次，确认 Idle 后返回直接 ETL 或新增文件的 `candidateFiles`。
+4. 没有直接 `trace` 时调用 download；多个候选必须传实际 `filename`。下载失败可重试 download，不能重放 stop。文件保存到历史目录并计算 SHA256；事件内容用 PerfView `eventsXml` 继续检查。
+
+WDP 没有远端所有权 token，也不返回采集实例的可靠唯一身份。工具的本地 captureId、VM 校验和前后文件列表依赖持续独占该客体的前提，无法排除外部工具在两次观察之间替换同类采集。不确定响应保留 receipt 和 `operationMayContinue`；关闭会话报告可能继续的采集，不能用新连接接管旧 captureId。Stop/download 可在 IDE 已退出时执行，仍检查 guest 身份。
 
 ## 持久 PhoneSession
 
@@ -200,3 +215,7 @@ taskmanager/app所需的 `appid` 和 `package` 在文档中称为hex64编码。�
 XAML fixture 可通过 `test/fixtures/New-Wp81Fixture.ps1 -XamlAutomation` 创建。将它打开在专用 VS2015 中，设置 Debug/x86 和明确的模拟器目标，启动对应自有模拟器。`VS2015_TEST_WP81_XAML_CONTEXT` 指向 TEMP 内 JSON，包含 `ownsIde:true`、`ownsXde:true`、`fixtureManifest`、`ide:{processId,startTimeUtc}`、`phone:{processId,startTimeUtc,vmId,coreConDeviceId,localeId}`、`targetPropertyName`、fixture 的 `invokePauseLine` 和实际截图确认的 `tap:{x,y}`。执行 `node --test test/integration/phone-xaml-runtime.test.mjs`，检查输出目录中的 results.json 和 PNG。
 
 `VS2015_TEST_WP81_WPR_CONTEXT` 指向 TEMP 内 JSON，包含 `ownsXde:true`、`exclusiveGuest:true`、`processId`、`startTimeUtc`、`vmId`、`coreConDeviceId`、`localeId` 和按实际原生状态决定的 `allowUnknownStatus`。执行 `node --test test/integration/guest-wpr-runtime.test.mjs`。测试会采集五秒 CPU profile、下载 ETL、校验 SHA256、核对历史记录并关闭会话。模拟器由创建它的调用方管理。
+
+`VS2015_TEST_WIN10M_PORTAL_CONTEXT` 使用 TEMP 内自有测试设备 JSON，同样提供 `ownsXde:true`、`exclusiveGuest:true`、processId/startTimeUtc/vmId/CoreCon/locale，另加 `baseUrl`、按实际连接选择的 `allowInsecureHttp`、可选 usernameEnv/passwordEnv/caPath、从设备目录选择的 `profilePointer`。执行 `node --test test/integration/portal-runtime.test.mjs`，它通过公开 MCP 读取进程、性能、包并完成五秒采集、下载、hash/history 一致性和清理。仅对独占测试客体启用；默认跳过。
+
+2026-11-20（UTC+08:00）本机专用 Win10M Portal 端口无响应，未完成上述真实端点回归。模拟 HTTP 生命周期、认证/CSRF、重定向拒绝、身份变化、超时不重放和下载恢复测试已通过；不以此宣称 Win10M WPR 实机成功。

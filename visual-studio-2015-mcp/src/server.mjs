@@ -16,7 +16,7 @@ import { createPhoneSessionTools } from './phone-session.mjs';
 let phoneSessions;
 
 serveStdio(() => {
-  const server = new McpServer({ name: 'visual-studio-2015', version: '0.4.0' });
+  const server = new McpServer({ name: 'visual-studio-2015', version: '0.5.0' });
   phoneSessions = createPhoneSessionTools();
   for (const name of ['cli-guide', 'phone-guide', 'diagnostics-performance', 'debug-guide', 'mobile-performance', 'ide-guide']) {
     server.registerResource(name, `vs2015://${name}`, { mimeType: 'text/markdown' }, async uri => ({

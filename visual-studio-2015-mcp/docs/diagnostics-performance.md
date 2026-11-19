@@ -61,6 +61,8 @@ Logger 在首次使用时通过已安装的 Framework `csc.exe` 编译，引用�
 
 CPU 内置导出选择最后一个同名实例，并非 PID＋启动时间筛选；GCStats 包含全部 CLR 进程，PID 重用也可能影响其输出命名。必须核对实际进程范围。
 
+`eventsXml` 导出全 trace 事件，无需 processName。返回 `eventSummary`，包含事件计数、CPU sample 事件数、原样 trace header、进程生命周期和未解码事件数。摘要保留 PID 重用、丢失字段、格式与解码限制；不能将 sample 事件数当作 CPU 毫秒或把 PID/name 自动归因到当前应用。真实 WP8.1 ETL 已通过公开 MCP 导出及 history 一致性回归，详见[手机客体性能](mobile-performance.md#etl-事件检查)。
+
 PerfView CSV 会改写名称中的逗号，`Inc` 是 count，不是 InclusiveMetric，数值受文化设置影响。保留原报告并核对列和单位；需要无损调用栈时保留 XML／ETL。此扩展不启动 PerfView 实时 collect：其失败路径会内部调用影响其他会话的 Abort。
 
 ### 旧 VSP 报告与比较

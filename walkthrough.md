@@ -401,3 +401,10 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - PerfView offline report 增加 eventsXml，使用官方 DumpEventsAsXml，在隔离副本上导出；流式 XMLReader 禁止 DTD/外部实体，限制文档和分组大小，返回事件计数、CPU sample 事件数、原样 loss header 和进程生命周期属性。
 - 真实 WP8.1 trace 含未解码的 classic task/opcode 事件；保留 unresolvedEventCount，不将它们丢弃或捏造名称。PID/name 分组不视为唯一进程实例，事件计数不伪装成 CPU 毫秒，保留符号/堆/应用归因边界。
 - 对原始 ETL 补齐 maxTraceBytes 复制前后检查。2 项解析/schema 测试通过（PID 重用、截断、DTD、未知事件）；真实公共 MCP 导出回归通过：10,941 事件、145 CPU samples、17 unresolved、39 进程生命周期观察，history 与立即返回一致。证据 TEMP/v15-guest-events-gNAM2B。
+
+## 2026-11-20T01:44:15+08:00 — v0.5.0 文档、协议清单与最终验证
+
+- 版本统一为 0.5.0，94 项工具/6 份资源；文档覆盖 Portal 环境变量凭据/CA、显式 profile JSON Pointer、单次 Stop、独立下载、目标和所有权边界，以及 eventsXml 的事件/未知事件/loss/进程生命周期含义。
+- 完整 SDK 单元套件 118/118 通过；标准集成套件 17 通过、24 个显式条件测试跳过，另有真实客体 ETL/PerfView 公共 MCP 回归通过。MCP 取消和 EOF 两项进程树清理通过，remainingPids 为空。0.5.0 握手、94 工具、6 资源与 Portal 错误码传播已验证。
+- Win10M shell 鼠标滑动仅改变焦点，独立 SDK TouchInfo 原型 60 秒超时，未合入未验证实现。两次自有 Win10M XDE 测试均已关闭，VM 最终 EnabledState=3；原用户 WP8.1 与三个 IDE 保留。
+- 当前剩余范围如实记录：Win10M Portal 真实端点采集（本机端口无响应）、通用 shell 触摸、手机托管堆、完整符号和应用热点归因。已通过模拟 HTTP 和真实 WP8.1 ETL 的证据不能替代这些验证。
