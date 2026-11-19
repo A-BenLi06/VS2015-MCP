@@ -71,6 +71,39 @@ function fixture(options = {}) {
 }
 async function opened(t, options) { const f = fixture(options); t.after(() => f.manager.stopAll()); f.open = await f.manager.open(f.input); return f; }
 
+test('Portal schemas reject raw credentials and arbitrary HTTP routes', () => {
+  const definitions = createPhoneSessionDefinitions({});
+  const connect = definitions.find(d => d.name === 'phone_session_portal_connect').schema;
+  const input = { phoneSessionId: IDS.vm, baseUrl: 'https://192.0.2.1' };
+  assert.throws(() => connect.parse({ ...input, password: 'secret' }));
+  assert.throws(() => connect.parse({ ...input, usernameEnv: 'USER_NAME' }));
+  assert.equal(connect.parse(input).allowInsecureHttp, false);
+  const read = definitions.find(d => d.name === 'phone_session_portal_read').schema;
+  assert.throws(() => read.parse({ phoneSessionId: IDS.vm, resource: '/api/wpr/trace' }));
+  const start = definitions.find(d => d.name === 'phone_session_portal_wpr_start').schema;
+  assert.throws(() => start.parse({ phoneSessionId: IDS.vm, profilePointer: '/CPU' }));
+});
+
+test('Portal work validates guest identity; cleanup bypasses IDE drift and reports active capture', async t => {
+  const f = await opened(t), calls = [], phoneSessionId = f.open.phoneSessionId;
+  f.manager.get(phoneSessionId).portal = {
+    async validate(proof) { calls.push(['validate', proof]); },
+    async execute(input) { calls.push(['execute', input.action]); return { state: 'observed' }; },
+    close() { calls.push(['close']); return [{ code: 'PORTAL_CAPTURE_MAY_CONTINUE', capture: { captureId: IDS.vm } }]; },
+  };
+  await f.manager.portal({ phoneSessionId, action: 'read', resource: 'processes' });
+  assert.equal(calls[0][1].matched, true); assert.equal(calls[1][1], 'read');
+  f.live.status.isOpen = false;
+  await assert.rejects(f.manager.portal({ phoneSessionId, action: 'start' }), { code: 'PHONE_IDE_BINDING_INVALID' });
+  await f.manager.portal({ phoneSessionId, action: 'stop' });
+  assert.equal(calls.at(-1)[1], 'stop');
+  f.clients[0].mapping.matched = false;
+  await assert.rejects(f.manager.portal({ phoneSessionId, action: 'download' }), { code: 'PHONE_MAPPING_INVALID' });
+  assert.equal(calls.at(-1)[1], 'stop');
+  const closed = await f.manager.close({ phoneSessionId });
+  assert.equal(closed.cleanupStatus, 'unknown'); assert.equal(closed.cleanupWarnings[0].code, 'PORTAL_CAPTURE_MAY_CONTINUE');
+});
+
 test('opaque session pins the actual SDK and included manifest, never caller product IDs', async t => {
   const f = fixture(); t.after(() => f.manager.stopAll());
   const result = await f.manager.open({ ...f.input, productId: 'untrusted', ideBinding: { ...f.input.ideBinding, productId: 'untrusted' } });

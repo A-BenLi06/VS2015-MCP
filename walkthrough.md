@@ -383,3 +383,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 增加精确 guest IP/VM/OS 身份绑定，按设备实际 JSON profile 目录及 JSON Pointer 选择 profile，校验状态和目录指纹。拒绝已有/未知采集，记录独占前提与外部客户端限制。
 - WPR Start/Stop 先落盘 receipt；失联后不自动重放。兼容 Stop 直接返回 ETL 或写入设备文件，单独下载可重试，按前后文件元数据选取，保留歧义及头部/事件验证边界。
 - 原始读取和采集结果进入 history；关闭报告可能继续的采集。10 项 HTTP/生命周期测试全部通过，包含不确定开始/停止、外部状态变化、歧义文件和下载恢复。
+
+## 2026-11-20T01:17:43+08:00 — 公开持久 PhoneSession Portal 工具
+
+- 新增 connect/read/WPR status/start/stop/download 六项公开工具，复用现有 PhoneSession 串行队列和 CoreCon 双端点校验。连接只接受精确 guest IP；不自动启用或配对 Portal。
+- Stop/download 在 IDE 关闭后仍可恢复，但继续校验 VM、CoreCon、客体 IP 和 OS。关闭及 EOF 释放本连接认证状态并报告活动采集。取消不会等待可能被应用阻塞的 IDE 调用，避免退出死锁。
+- 54 项相关测试通过，包括 schema、目标漂移、IDE 失效后的清理、关闭采集警告及原 WP8.1 WPR 回归。

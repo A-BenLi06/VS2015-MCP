@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { PhoneBridgeClient, createPhoneBridgeLauncher } from './phone-client.mjs';
 import { appendEvent, createRun, readRun, runDirectory, saveArtifact } from './history.mjs';
+import { PortalSession } from './portal-session.mjs';
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const sameScalar = (a, b) => Object.is(a, b);
@@ -205,14 +206,14 @@ export class PhoneSessionManager {
     if (initial) record.snapshot = snapshot;
     record.guards = guards;
   }
-  async validate(record, ctx) {
+  async validate(record, ctx, { skipIde = false } = {}) {
     this.assertAvailable(record, ctx.signal);
     const current = await this.sdk(record, 'identity', { sessionId: record.backendId }, ctx);
     try {
       check(sameIdentity(record.identity, pinIdentity(current.identity)), 'PHONE_TARGET_CHANGED', 'The SDK process/VM identity changed.');
       if (record.input.coreConDeviceId) checkMapping(current.crossChannelMapping, record.input, record.identity);
     } catch (error) { record.state = 'invalid'; record.invalidReason = error.code; throw error; }
-    await this.validateIde(record, ctx);
+    if (!skipIde) await this.validateIde(record, ctx);
     this.assertAvailable(record, ctx.signal);
     return current;
   }
@@ -287,6 +288,21 @@ export class PhoneSessionManager {
     const output = input.path ? path.resolve(input.path) : path.join(os.tmpdir(), 'vs2015-mcp-captures', randomUUID() + '.png');
     await mkdir(path.dirname(output), { recursive: true }); this.assertAvailable(record, context.signal);
     return this.public(record, await this.sdk(record, 'capture', { sessionId: record.backendId, path: output }, context));
+  }); }
+  portal(input, ctx = {}) { return this.enqueue(input.phoneSessionId, input, ctx, async (record, context) => {
+    check(record.input.coreConDeviceId, 'PORTAL_BINDING_REQUIRED', 'Open the phone session with an exact CoreCon device and locale.');
+    const proof = await this.validate(record, context, { skipIde: ['stop', 'download'].includes(input.action) });
+    if (input.action === 'connect') {
+      check(!record.portal, 'PORTAL_ALREADY_CONNECTED', 'This phone session already has a Portal connection. Close the phone session before changing the endpoint.');
+      record.portal = await PortalSession.connect(input, proof.crossChannelMapping, record.identity, context);
+      try { this.assertAvailable(record, context.signal); }
+      catch (error) { record.portal.close(); throw error; }
+      return this.public(record, record.portal.public());
+    }
+    check(record.portal, 'PORTAL_NOT_CONNECTED', 'Connect Device Portal for this phone session first.');
+    await record.portal.validate(proof.crossChannelMapping, context);
+    this.assertAvailable(record, context.signal);
+    return this.public(record, await record.portal.execute(input, context));
   }); }
   guestWpr(input, ctx = {}) { return this.enqueue(input.phoneSessionId, input, ctx, async (record, context) => {
     const operations = { status: 'guestWprStatus', start: 'guestWprStart', stop: 'guestWprStop' };
@@ -373,8 +389,10 @@ export class PhoneSessionManager {
       catch (failure) { error = errorWithDetails(failure); }
       finally { try { shutdown = await record.client?.stop(); } catch (failure) { shutdown = { cleanupStatus: 'unknown', error: failure.message }; } this.records.delete(record.id); record.state = 'closed'; }
       const { sessionId: ignored, ...closedResult } = result ?? {};
+      const cleanupWarnings = [...(result?.cleanupWarnings ?? []), ...(record.portal?.close() ?? [])];
       return { ...closedResult, phoneSessionId: record.id, closed: true, vmClosed: false,
-        cleanupStatus: result ? (result.cleanupWarnings?.length || result.unreleasedKeys?.length ? 'unknown' : 'completed') : shutdown?.cleanupStatus ?? 'unknown',
+        cleanupWarnings,
+        cleanupStatus: cleanupWarnings.length ? 'unknown' : result ? (result.unreleasedKeys?.length ? 'unknown' : 'completed') : shutdown?.cleanupStatus ?? 'unknown',
         cleanupDetails: { shutdown }, ...(error ? { error: { code: error.code, message: error.message, operationMayContinue: error.operationMayContinue } } : {}) };
     });
     return record.closePromise;
@@ -382,7 +400,8 @@ export class PhoneSessionManager {
   async stopAll() {
     this.closed = true; const records = [...this.records.values()]; this.records.clear();
     for (const record of records) { record.state = 'stopped'; record.closing = true; record.stopController.abort(new PhoneSessionError('PHONE_SESSION_CLOSED', 'The MCP connection closed.')); }
-    return Promise.allSettled(records.map(async record => ({ phoneSessionId: record.id, shutdown: await record.client?.stop() })));
+    return Promise.allSettled(records.map(async record => ({ phoneSessionId: record.id,
+      cleanupWarnings: record.portal?.close() ?? [], shutdown: await record.client?.stop() })));
   }
 }
 
