@@ -105,7 +105,8 @@ export function portalEtlEvidence(result) {
   const prefix = result.prefix;
   const bufferSize = prefix?.length >= 8 ? prefix.readUInt32LE(0) : 0;
   const filled = prefix?.length >= 8 ? prefix.readUInt32LE(4) : 0;
-  const headerPlausible = result.bytes >= 1024 && bufferSize >= 1024 && bufferSize <= 1048576 && filled >= 64 && filled <= bufferSize;
+  const headerPlausible = bufferSize >= 4096 && bufferSize <= 16777216 && bufferSize % 1024 === 0 &&
+    result.bytes >= bufferSize && filled >= 64 && filled <= bufferSize;
   const { prefix: ignored, ...evidence } = result;
   if (!headerPlausible) throw new PortalError('PORTAL_ETL_INVALID', 'The downloaded response does not have a plausible ETL buffer header.', { details: { artifact: evidence } });
   return { ...evidence, headerPlausible: true, eventContentValidated: false };

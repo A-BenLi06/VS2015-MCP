@@ -389,3 +389,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 新增 connect/read/WPR status/start/stop/download 六项公开工具，复用现有 PhoneSession 串行队列和 CoreCon 双端点校验。连接只接受精确 guest IP；不自动启用或配对 Portal。
 - Stop/download 在 IDE 关闭后仍可恢复，但继续校验 VM、CoreCon、客体 IP 和 OS。关闭及 EOF 释放本连接认证状态并报告活动采集。取消不会等待可能被应用阻塞的 IDE 调用，避免退出死锁。
 - 54 项相关测试通过，包括 schema、目标漂移、IDE 失效后的清理、关闭采集警告及原 WP8.1 WPR 回归。
+
+## 2026-11-20T01:24:35+08:00 — Portal 公开 MCP 实机测试入口及 ETL 截断拒绝
+
+- 增加 VS2015_TEST_WIN10M_PORTAL_CONTEXT 显式启用的公共工具链回归：绑定 guest、查询进程/性能/包、状态/profile 选择、采集/停止/下载、SHA256/history 一致性及独立清理。
+- ETL 必须至少包含首个完整 buffer，拒绝声称大 buffer 的截断文件；兼容已验证 WP8.1 真实 ETL 头部。
+- 10 项相关测试通过；Portal 实机测试缺少已启用的端点故明确跳过。此前启用本机 SDK 的完整测试 116/116 通过，专用 Win10M 测试 VM 已确认关闭（EnabledState=3），原有 WP8.1 模拟器与 IDE 保留。

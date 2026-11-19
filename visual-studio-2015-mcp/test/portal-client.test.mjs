@@ -58,4 +58,7 @@ test('Portal streams exact ETL bytes and enforces response/header limits', async
   await assert.rejects(c.request('/', { maxBytes: 256 }), { code: 'PORTAL_RESPONSE_TOO_LARGE' });
   await assert.rejects(c.request('/bad'), { code: 'PORTAL_RESPONSE_INVALID' });
   assert.throws(() => portalEtlEvidence({ bytes: 4096, prefix: Buffer.from('<html>response</html>') }), { code: 'PORTAL_ETL_INVALID' });
+  const oversizedBuffer = Buffer.from(bytes.subarray(0, 64)); oversizedBuffer.writeUInt32LE(1048576, 0);
+  assert.throws(() => portalEtlEvidence({ bytes: 4096, prefix: oversizedBuffer }), { code: 'PORTAL_ETL_INVALID' });
+  assert.equal(portalEtlEvidence({ bytes: 1048576, prefix: oversizedBuffer }).headerPlausible, true);
 });
