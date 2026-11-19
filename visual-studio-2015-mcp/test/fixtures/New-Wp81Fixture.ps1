@@ -6,6 +6,7 @@ param(
     [string]$VisualStudioRoot = $(if ($env:VS140COMNTOOLS) { [IO.Path]::GetFullPath((Join-Path $env:VS140COMNTOOLS '../..')) } else { Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio 14.0' }),
     [ValidatePattern('^[A-Za-z_][A-Za-z0-9_]*$')][string]$ProjectName = 'McpPhoneFixture',
     [string]$DefaultLanguage = [Globalization.CultureInfo]::CurrentUICulture.Name,
+    [switch]$XamlAutomation,
     [switch]$Build,
     [string]$MSBuildPath = (Join-Path ${env:ProgramFiles(x86)} 'MSBuild/14.0/Bin/MSBuild.exe')
 )
@@ -69,6 +70,10 @@ $mainXaml = @"
 <Button x:Name="IncrementButton" AutomationProperties.AutomationId="IncrementButton" Content="Compute next" HorizontalAlignment="Stretch" Height="100" Click="OnIncrement"/>
 </StackPanel></Grid></Page>
 "@
+if ($XamlAutomation) {
+    $mainXaml = $mainXaml.Replace('<Page ', '<Page RequestedTheme="Dark" ')
+    $mainXaml = $mainXaml.Replace('</StackPanel>', '<TextBox x:Name="EditableValue" AutomationProperties.AutomationId="EditableValue" Text="" Margin="0,16,0,0" FontSize="24"/></StackPanel>')
+}
 $mainSource = @"
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -113,6 +118,7 @@ EndGlobal
 "@
 [IO.File]::WriteAllText($solution,$solutionText,[Text.UTF8Encoding]::new($false))
 $manifest = [ordered]@{ root=$destination; solution=$solution; project=$project; projectName=$ProjectName; source=$source; breakpointLine=$breakpointLine; projectGuid=$projectGuid; productId=$productId; initialCounter=21; expectedDoubled=42; templateDirectory=$template; defaultLanguage=$DefaultLanguage; createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o') }
+if ($XamlAutomation) { $manifest.invokePauseLine = $breakpointLine + 2 }
 if ($Build) {
     if (-not (Test-Path -LiteralPath $MSBuildPath -PathType Leaf)) { throw 'MSBuild 14 was not found; specify MSBuildPath.' }
     $log = Join-Path $destination 'build.log'

@@ -361,3 +361,7 @@ PhoneSessions 使用现有 PID/启动时间/VM GUID/CoreCon 双端点校验，�
 ## 2026-11-19T21:44:57+08:00 — 可重复的公开 WPR 实机回归
 
 新增 VS2015_TEST_WP81_WPR_CONTEXT opt-in 回归，要求 TEMP 自有 XDE 上下文和精确启动时间/VM 身份。测试通过公开 MCP 检查 status/start/stop、下载字节数和 SHA256、history artifact 一致性及无警告清理。失败 Stop 不重放。实际 WP8.1 运行 34.3 秒通过，证据 run 19b663a3-151a-4c88-8b88-2b68f2298b29，调用记录 TEMP/wpr-runtime-xUgoBP。
+
+## 2026-11-19T21:47:15+08:00 — 生成可复用的 XAML 自动化 fixture
+
+New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBox 与 invokePauseLine 元数据，替代实机准备阶段的临时文件补丁。保留默认 fixture 行为。新建 TEMP fixture 经 MSBuild 14 x86 成功生成 AppX，编译无错误。
