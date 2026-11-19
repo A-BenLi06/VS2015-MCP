@@ -324,3 +324,10 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - 首次实机测试虽然 SDK 属性回读成功，截图仍显示 Ready 21。修正测试，在暂停后移除自有断点，恢复后等待新的 run 事件，核对 counter 23 和仅两条 setText/invoke 分发事件。
 - 保存每次 MCP 调用和返回，检查 fixture 路径、解决方案和断点位置。清理使用独立于已取消测试的请求，验证 stop/detach/PhoneSession 清理结果。
 - 验证相关 3 项单元测试通过，专用 WP8.1 实机测试通过（133.5 秒）。目视确认 xaml-mcp-5sm0IP/xaml-result44.png 显示 Result 44 及包含引号、反斜杠、中文、竖线和冒号的文本。完整证据位于 TEMP/vs2015-wp81-fa9a30ef98e74fabaf349f5ed7bee4b2。测试自有 IDE/XDE 已清理。
+
+## 2026-11-19T21:15:46+08:00 — 接入 WP8.1 Guest WPR 生命周期后端
+
+- 导入经本机 SDK 原型验证的 CPU.Verbose.Memory 采集适配器，保留原生输出、HRESULT、命令时间区间、持久 receipt、ETL SHA256 及格式/事件分析边界。
+- 用调用方显式 exclusiveGuest、observedStatusFingerprint 和 allowUnknownStatus 表达独占使用及状态未知时的决定，移除原型中产品无法建立的 fresh-VM 证明门槛。已有采集和状态变化仍拒绝启动，仅本控制器的 captureId 可停止。
+- 不确定的包交换使 transport 失效，停止分发后禁止再次 Stop，关闭仅释放 transport 并记录可能继续的采集。ETL 头部只标 headerPlausible，事件语义等待离线分析。
+- 验证 Windows PowerShell 5.1 x86 生命周期测试 10 项通过，覆盖原生失败、已有采集、未知状态、错误 ETL 和 EOF 保留采集。公开 MCP 接入及本版实机采集继续完成。
