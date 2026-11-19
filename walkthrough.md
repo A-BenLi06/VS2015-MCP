@@ -371,3 +371,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 更新 README、手机指南和手机客体性能指南，记录 88 个工具、持久 PhoneSession、XAML 操作、Guest WPR 的 status/start/stop 约束和真实 ETL 证据边界。package.json、package-lock.json 与 MCP server 版本同步到 0.4.0。
 
 验证补充（2026-11-19T21:57:19+08:00）— 修正旧版指南中的待验证状态，说明 Win10M WPR/Portal、托管堆和应用归因边界。默认单元测试 101 通过、3 项 SDK 检查跳过，已启用 SDK 的完整运行 104/104 通过。标准集成套件 17 通过、23 项显式条件测试跳过，另行实测的 XAML/WPR 均通过。MCP v0.4.0 握手、88 工具、6 个文档资源读取成功。
+
+## 2026-11-20T01:09:46+08:00 — 增加 Device Portal 独立 HTTP 传输
+
+- 新增有界 JSON/流式 ETL 客户端：明确 HTTP 同意、每连接 CA 与环境变量 Basic 凭据、CSRF Cookie/请求头、禁用重定向和自动重试，保持系统 TLS 校验。
+- 超时和取消区分分发前/后；已分发 mutation 返回 operationMayContinue。临时下载失败清理，完成后记录字节数/SHA256，ETL 头部检查不冒充事件解析。
+- 验证 5 项真实本地 HTTP 服务测试通过，覆盖认证、跨源重定向、CSRF、查询编码、超时、不重放、文件清理和非法产物。Win10M 专用模拟器 Portal 端口不响应，桌面窗口捕获两次超时；本阶段未宣称客体 Portal 验证通过。
