@@ -2,7 +2,7 @@
 
 手机模拟器操控与手机应用性能采集使用不同通道。已有 phone 工具负责启动、部署、输入、截图等；`vs2015_profile_sample` 和本机 CDB 面向宿主 PID。把 XDE 的 PID 传给它们只能测模拟器宿主进程，不能代表 WP8.1／Win10M 应用。
 
-以下是本机 SDK 文件、部署定义及微软资料的核对结果，**尚未实现为手机性能采集 MCP 工具，也未进行客体实采**。
+WP8.1 已通过 `phone_session_wpr_status/start/stop` 提供 CPU profile 客体采集。下表同时列出已实现通道和后续平台接入路径。
 
 | 平台 | 可继续接入的客体通道 | 当前证据与限制 |
 |---|---|---|
@@ -23,4 +23,10 @@ CPU 曲线、工作集、Private Bytes、GC 事件、分配类型与对象引用
 - [VS 中的 WP8.1 性能分析](https://devblogs.microsoft.com/devops/performance-profiling-on-windows-phone-8-1-with-visual-studio/)：WinRT 与 Silverlight 工作流不同，Memory/Energy 依赖相应更新；模拟器性能不等同真机。
 - [Memory Usage 工具](https://devblogs.microsoft.com/devops/diagnosing-memory-issues-with-the-new-memory-usage-tool-in-visual-studio/)：类型、快照差异和引用分析的实际含义。
 
-以上 SDK 内部协议来自 2026-11-17（UTC+08:00）的本机静态检查，不是微软公开兼容性承诺。本轮没有启动 VM、连接门户、部署 guest 服务或停止任何手机采集。
+SDK 内部协议经过已安装组件检查和 WP8.1 实机验证，适配器用 agent 8.1 握手限定支持范围。Win10M Device Portal 接入仍待实现。
+
+## 已验证的 WP8.1 Guest WPR
+
+持久 PhoneSession 通过 XDE PID、启动时间、Hyper-V VM GUID、CoreCon GUID/locale 和 host/guest endpoint pair 固定客体。phone_session_wpr_status 保留 native output 和 fingerprint，phone_session_wpr_start 只接受类型化的 cpu profile，phone_session_wpr_stop 只接受本控制器返回的 captureId。真实验证返回了 4 MiB ETL，EventsLost=0、BuffersLost=0，PerfView 离线 XML 中包含 CPU sample 事件。
+
+这条 profile 的证据覆盖客体采集生命周期和 native/module sample。当前报告仍将 managed GC、managed heap、symbol completeness 和应用热点归因标为未验证。Win10M 需要其对应的 Portal 接入与运行验证。

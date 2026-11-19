@@ -1,8 +1,8 @@
 # Windows Phone 8.1与Windows 10 Mobile模拟器指南
 
-手机工具覆盖已安装SDK的发现、CoreCon设备连接、XDE模拟器状态与截图、定向输入，以及部署CLI。主服务使用PowerShell7；XDE/CoreCon通过32位Windows PowerShell5.1桥运行，以匹配本机旧SDK的x86 .NET Framework程序集。每次请求独立加载相应版本，避免把XDE8.1与XDE10的程序集混在一个进程中。
+手机工具覆盖已安装SDK的发现、CoreCon设备连接、XDE模拟器状态与截图、定向输入，以及部署CLI。主服务使用PowerShell7；XDE/CoreCon通过32位Windows PowerShell5.1桥运行，以匹配本机旧SDK的x86 .NET Framework程序集。单次 phone 工具每次请求启动桥接，phone_session 工具为每个目标复用独立的持久桥接。每个桥接固定所选 XDE SDK。
 
-以下工具名和字段与当前 `src/phone.mjs` 一致。本版本共有20个MCP工具，其中12个属于 `phone_*`。示例中的 `selectedDevice`、`running`、包路径和应用标识均应来自当前发现结果或实际构建产物；不要照抄其他机器的名称、语言或进程号。
+基础手机工具定义见 `src/phone.mjs`，持久会话及 WPR 工具定义见 `src/phone-session.mjs`。示例中的 `selectedDevice`、`running`、包路径和应用标识均应来自当前发现结果或实际构建产物；不要照抄其他机器的名称、语言或进程号。
 
 ## 字段与工具
 
@@ -147,11 +147,11 @@ CoreCon应用身份与Windows10 UWP包身份不完全相同。只有当所需应
 
 ## 验证范围与未就绪状态
 
-当前研究与后端测试已确认WP8.1的SDK枚举、运行实例发现、AutomationClient状态读取及真实guest PNG截图。部署命令计划和PIN隐藏可以独立验证，这不等于已在设备上安装应用。
+WP8.1 与 Win10M 已在专用 TEMP 应用中完成 IDE 构建、解决方案及项目部署、guest 输入、断点、locals、单步、恢复和截图。两个平台的持久会话也已同时运行，核对独立身份、关闭一个会话后另一个继续工作及清理结果。
 
-Win10M的选定模拟器已由CoreCon启动，Hyper-V报告VM运行，AutomationClient连接并能列出输入相关feature。但测试时guest的 `shellReady` 与 `toolsReady` 仍为false，CaptureImage没有生成文件。因此当前不能把Win10M输入、实际截图、UWP应用启动、应用部署或Device Portal连接标为运行验证通过。不要反复调用start掩盖尚未完成的启动/握手问题。
+2026-11-19（UTC+08:00）新增 WP8.1 XAML 和 WPR 公开 MCP 实机验证。XAML 覆盖树与子树、文本写入、一次 Invoke、旧节点拒绝及恢复后的截图。WPR 覆盖状态、CPU profile 启动、停止、ETL 下载、SHA256 和历史 artifact 一致性。Win10M WPR 和真机性能尚待实现或验证。
 
-若CaptureImage没有产物，截图工具应报错并保留原有目标文件，不会把上一次PNG当成新结果。先检查status、SDK/镜像兼容性、Hyper-V状态及可用内存；等待或进一步诊断已有实例，避免同时启动多个配置增加压力。
+CaptureImage 未生成产物时会返回错误。可结合 shellReady、toolsReady、SDK/镜像及 Hyper-V 状态检查已有实例。
 
 ## Device Portal：官方备用方案，当前MCP尚未实现
 
@@ -172,3 +172,31 @@ Windows Mobile Device Portal从Windows10 Mobile1511开始提供，需要设备�
 微软文档明确列出这些相关API的Mobile支持；任意PID终止则没有Mobile支持。核心参考没有提供可直接推广到Mobile的截图或触控接口，不能把Xbox或HoloLens端点套用过来。[Device Portal核心API](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/device-portal-api-core)
 
 taskmanager/app所需的 `appid` 和 `package` 在文档中称为hex64编码。微软官方wrapper的 `Hex64Encode` 实际使用UTF-8字节的Base64；构造URL时还需正确转义查询值。它与CoreCon ProductID GUID不是同一套身份参数。[TaskManager源码](https://raw.githubusercontent.com/microsoft/WindowsDevicePortalWrapper/master/WindowsDevicePortalWrapper/WindowsDevicePortalWrapper.Shared/Core/TaskManager.cs)、[编码实现](https://raw.githubusercontent.com/microsoft/WindowsDevicePortalWrapper/master/WindowsDevicePortalWrapper/WindowsDevicePortalWrapper.Shared/Utilities.cs)
+
+## 持久 PhoneSession
+
+从 `phone_discover.running` 获取 `processId`、`startTimeUtc` 和 `vmId`，传给 `phone_session_open` 的 `processId`、`expectedStartTimeUtc` 和 `expectedVmId`。CoreCon 绑定使用 `phone_devices` 返回的 GUID 及相同 `localeId`。打开时和后续操作时都核对 XDE 与 CoreCon 的 host/guest 地址对。
+
+`ideBinding` 使用已连接 IDE 的 `sessionId`、实际 `projectUniqueName`、目标 GUID 属性的 `targetPropertyName` 和 `scope`。清单由项目实际包含的已保存 Appx 文件解析。`phone_session_ide` 允许列表包含构建、调试、文档、客体身份和 XAML 工具。它会复核配置、启动项目、清单 SHA256 和目标属性。`vs2015_ide_guest_app_identity` 在暂停客体中读取 SDK 包身份，匹配时返回 `guest-matched`，其余调用报告 `project-only`。
+
+`phone_session_input` 复用 SDK 输入句柄，Press 持有状态跨请求保存。`phone_session_close` 释放本会话持有的键及连接，并返回清理信息。截图使用 guest 像素坐标和原子文件替换。
+
+## WinRT XAML 自动化
+
+在托管 XAML UI 线程暂停后，向 `vs2015_ide_xaml_tree` 传当前 `pauseId` 和可选 `frameId`。树根为 `Window.Current.Content`，可用上次树中的 `rootNodeId` 请求子树。`maxDepth` 相对所选根，`maxNodes`、`maxChildren`、`queryTimeoutMs` 控制遍历范围。检查 `partial`、`truncated` 和 `warnings`。
+
+`vs2015_ide_xaml_action` 接受本次快照的 `nodeId` 和 `action`。`invoke` 使用 InvokePattern，`setValue` 使用 ValuePattern，`setText` 对启用且可编辑的标准 TextBox 写入 Text 并回读。文本操作还需 `value`。SDK 求值可能执行应用代码，读取过程也可能触发 getter。新快照、执行恢复和动作分发都会使旧节点失效。使用动作返回的新 `pauseId` 继续检查。`issued` 表示调用已返回，`confirmed` 表示文本回读一致，按钮处理结果需另行观察。
+
+## WP8.1 Guest WPR
+
+先调用 `phone_session_wpr_status`，保存 `observation.status.fingerprint`。首次调用会部署并启动已安装的 developer agent。start 接受 `operation` 说明、`exclusiveGuest:true`、指纹和 `profiles:["cpu"]`。原生状态为 unknown 时，调用方可在明确独占该 guest 的前提下传 `allowUnknownStatus:true`。已有采集会被拒绝，外部 profiler 客户端仍可独立改变 WPR 状态。
+
+记录 start 返回的 `captureId`，执行应用操作后调用 `phone_session_wpr_stop`，同时传 `exclusiveGuest:true`。Stop 重新核对 profile 集合，下载唯一 ETL。返回的 `trace.path`、`trace.bytes`、`trace.sha256` 和 `trace.headerPlausible` 描述文件证据，`eventContentValidated:false` 提示需要离线解析。使用 `vs2015_history_artifact` 可按返回的 runId/artifactId 读取相同结果。长历史路径触发 `GUEST_WPR_PATH_TOO_LONG` 时可通过 `VS2015_MCP_HISTORY` 指定较短根目录。
+
+错误中的 `operationMayContinue:true` 表示命令可能已经执行。检查 receipt 和 native status，避免重放 start/stop。关闭期间若采集可能继续，会返回 `GUEST_WPR_CAPTURE_MAY_CONTINUE` 及 receipt 路径。中断后的原始 receipt 和命令日志保存在历史目录，恢复时必须重新核对设备与采集归属。
+
+## 可重复实机测试
+
+XAML fixture 可通过 `test/fixtures/New-Wp81Fixture.ps1 -XamlAutomation` 创建。将它打开在专用 VS2015 中，设置 Debug/x86 和明确的模拟器目标，启动对应自有模拟器。`VS2015_TEST_WP81_XAML_CONTEXT` 指向 TEMP 内 JSON，包含 `ownsIde:true`、`ownsXde:true`、`fixtureManifest`、`ide:{processId,startTimeUtc}`、`phone:{processId,startTimeUtc,vmId,coreConDeviceId,localeId}`、`targetPropertyName`、fixture 的 `invokePauseLine` 和实际截图确认的 `tap:{x,y}`。执行 `node --test test/integration/phone-xaml-runtime.test.mjs`，检查输出目录中的 results.json 和 PNG。
+
+`VS2015_TEST_WP81_WPR_CONTEXT` 指向 TEMP 内 JSON，包含 `ownsXde:true`、`exclusiveGuest:true`、`processId`、`startTimeUtc`、`vmId`、`coreConDeviceId`、`localeId` 和按实际原生状态决定的 `allowUnknownStatus`。执行 `node --test test/integration/guest-wpr-runtime.test.mjs`。测试会采集五秒 CPU profile、下载 ETL、校验 SHA256、核对历史记录并关闭会话。模拟器由创建它的调用方管理。

@@ -2,7 +2,7 @@
 
 面向 Windows 的本地 stdio MCP 服务，提供 VS2015 构建、测试、SDK CLI、编译诊断、调试、性能采样与历史比较，以及 Windows Phone 8.1 / Windows 10 Mobile 模拟器操控。
 
-**v0.3.0 — IDE Automation** 新增持久 STA／EnvDTE 桥接：连接指定运行实例，读取真实解决方案和未保存文档，按事件等待 IDE 构建，设置断点、运行、单步并读取变量。现有 45 项工具保留，共 65 项工具。详见 [IDE 指南](docs/ide-guide.md) 和[源码审查跟进](docs/review-followup.md)。
+**v0.4.0 — PhoneSession 与客体自动化** 在 IDE 自动化基础上增加持久手机会话、WinRT XAML 控件树查询与受保护操作、WP8.1 Guest WPR CPU 采集和历史 artifact。现有 CLI、IDE 与手机工具保留，共 88 项工具。详见 [IDE 指南](docs/ide-guide.md)、[手机模拟器指南](docs/phone-guide.md) 和[手机客体性能接入现状](docs/mobile-performance.md)。
 
 协议层使用官方 MCP SDK；原生命令由 PowerShell 7 执行。XDE 的 x86 .NET Framework 程序集通过独立的 32 位 Windows PowerShell 5.1 进程调用。无需 VS 扩展，不下载 SDK、镜像或模型，也不调用 AI API。
 
@@ -48,6 +48,8 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 | `vs2015_ide_errors_output` | 当前 Error List 与按 GUID 选择的 Output 文本 |
 | `vs2015_ide_debug_state` / `vs2015_ide_debug_breakpoints` / `vs2015_ide_debug_control` / `vs2015_ide_debug_wait` | 持续 IDE 调试、断点、单步及状态等待 |
 | `vs2015_ide_debug_inspect` / `vs2015_ide_debug_evaluate` | IDE 当前线程／栈／locals 和显式表达式求值 |
+| `vs2015_ide_guest_app_identity` | 暂停客体的实际 SDK 包身份 |
+| `vs2015_ide_xaml_tree` / `vs2015_ide_xaml_action` | 有界 WinRT XAML 树、子树及快照节点操作 |
 | `vs2015_discover` | 安装来源、版本、组件、架构和 SDK 能力 |
 | `vs2015_inspect_solution` | 读取真实项目名和解决方案配置 |
 | `vs2015_tool_help` | 查询本机工具支持的开关 |
@@ -72,6 +74,10 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 | `phone_screenshot` / `phone_input` | PNG/MCP 图片、触摸、键盘、文本和硬件按钮 |
 | `phone_apps` | CoreCon 应用枚举、启动、终止、卸载 |
 | `phone_cli_help` / `phone_cli` / `phone_deploy` | 手机 SDK 部署帮助、原生命令和结构化部署 |
+| `phone_session_open` / `phone_session_status` / `phone_session_endpoint` / `phone_session_close` | 绑定 XDE PID、启动时间、Hyper-V VM GUID、CoreCon GUID/locale 和 endpoint pair 的持久手机会话 |
+| `phone_session_input` / `phone_session_screenshot` | 在持久会话中复用输入句柄和截图连接，并在关闭时释放本会话持有的按键 |
+| `phone_session_ide` | 将允许的 IDE 构建、调试、清单身份和 XAML 操作路由到已绑定项目 |
+| `phone_session_wpr_status` / `phone_session_wpr_start` / `phone_session_wpr_stop` | 在 WP8.1 客体中读取原生 WPR 状态、启动 CPU.Verbose.Memory、下载已校验 ETL，并写入历史 artifact |
 
 详细使用方式及微软来源见 [IDE 指南](docs/ide-guide.md)、[CLI 指南](docs/cli-guide.md)、[诊断与性能指南](docs/diagnostics-performance.md)、[调试指南](docs/debug-guide.md)、[手机模拟器指南](docs/phone-guide.md)、[手机客体性能接入现状](docs/mobile-performance.md)。客户端可通过同名 MCP resources 读取，例如 `vs2015://ide-guide`。
 
@@ -104,10 +110,20 @@ npm run test:cancellation
 - WP8.1 发现、状态与 480×800 PNG/MCP 图片；部署 dryRun 和 PIN 脱敏。
 - Win10 Mobile 模拟器已启动且可通过 MCP 查询状态、请求关闭。该次启动的 shell/tools pipe 未就绪，因此 **Win10 输入、截图及 UWP 应用运行尚未完成实际验证**。验证实例已关闭。
 
-部署真实包、测试程序集、手机输入效果仍需在目标项目/就绪设备上验证。本机 XDE 公共程序集提供输入接口，但不应将其视为微软承诺长期兼容的公开自动化协议。
+2026-11-18（UTC+08:00）后续验证已完成 WP8.1／Win10M 的实际部署、guest 输入、断点及截图。目标项目仍需使用对应 SDK 和就绪设备验证。本机 XDE 适配以已安装程序集及运行结果为依据。
 
-2026-11-17（UTC+08:00）扩展验证：真实 MSBuild 14 多节点诊断、Framework CPU／分配／GC 计数、MCP 采样与历史比较、取消清理、快照完整性及归档提取。随后完成微软签名 PerfView／CDB 的独立部署，真实 CPU/GC 离线报告与热点对照、自建进程的 CDB 托管栈和完整 dump 堆统计均通过。VSPerf 实时采集／detach 仍待管理员环境验证；手机客体性能通道仍处于核对阶段。
+2026-11-17（UTC+08:00）扩展验证：真实 MSBuild 14 多节点诊断、Framework CPU／分配／GC 计数、MCP 采样与历史比较、取消清理、快照完整性及归档提取。随后完成微软签名 PerfView／CDB 的独立部署，真实 CPU/GC 离线报告与热点对照、自建进程的 CDB 托管栈和完整 dump 堆统计均通过。VSPerf 实时采集／detach 仍待管理员环境验证。手机验证进展见下方 v0.4.0 说明。
 
 实际工具回归默认跳过，避免依赖额外下载或操作已有进程。可为测试命令设置 `VS2015_TEST_PERFVIEW`、`VS2015_TEST_ETL`、`VS2015_TEST_TRACE_PROCESS`，验证已有 Framework CPU/GC trace 的报告；设置 `VS2015_TEST_CDB_ROOT` 验证测试自身创建的 Framework x64 进程，另可设置 `VS2015_TEST_MANAGED_DUMP` 分析已有 dump。它们不等同 `VS2015_MCP_*` 服务配置变量。
 
-IDE 实机回归使用 `VS2015_TEST_IDE_PID/START/SOLUTION/SOURCE` 和 TEMP 自有 fixture 身份记录，默认跳过；已通过真实 MCP 的未保存编辑、重建事件、断点、变量、单步、停止、两客户端租约和取消等待。本机单元测试 32 项通过；GitHub Actions 在 Windows/Linux、Node22/24 上运行同一套环境独立测试。
+IDE 实机回归使用 `VS2015_TEST_IDE_PID/START/SOLUTION/SOURCE` 和 TEMP 自有 fixture 身份记录，默认跳过。已通过真实 MCP 的未保存编辑、重建事件、断点、变量、单步、停止、两客户端租约和取消等待。GitHub Actions 在 Windows/Linux、Node22/24 上运行环境独立测试，依赖已安装 VS2015 的检查通过显式环境变量启用。
+
+### PhoneSession 与 Guest WPR
+
+PhoneSession 固定 XDE `processId`、`expectedStartTimeUtc`、Hyper-V `expectedVmId`。IDE 绑定还需要 CoreCon `coreConDeviceId` 和 `localeId`，服务核对 SDK 的 host/guest 地址对。详细调用流程见手机指南。
+
+WP8.1 WPR 提供 `phone_session_wpr_status`、`phone_session_wpr_start`、`phone_session_wpr_stop`。原生 unknown 状态需要调用方结合当前设备使用情况明确选择 `allowUnknownStatus`，错误中的 `operationMayContinue` 和持久 receipt 支持后续检查。成功 Stop 返回 ETL 路径、字节数、SHA256 和 `headerPlausible`。事件、符号和应用归因由后续离线分析确认。
+
+2026-11-19（UTC+08:00）验证了 104 项完整单元测试、WP8.1 XAML 文本与单次 Invoke 实机流程、WP8.1 WPR 公开 MCP 采集与历史一致性。XAML 实机截图显示 `Result: 44` 和含引号、反斜杠、中文的完整文本。WPR ETL 经 PerfView 离线解析含 10,941 事件、145 个 CPU sample 事件，EventsLost 和 BuffersLost 均为 0。该采集验证覆盖系统采集生命周期，应用热点归因和托管 GC/堆仍待验证。
+
+通用单元测试使用 `npm test`。已安装 VS2015/手机 SDK 的机器可设置 `$env:VS2015_TEST_INSTALLED_SDK='1'` 运行全部 SDK 相关检查。自有手机实机测试分别使用 `VS2015_TEST_WP81_XAML_CONTEXT` 和 `VS2015_TEST_WP81_WPR_CONTEXT`，上下文格式见手机指南。`test/fixtures/New-Wp81Fixture.ps1 -XamlAutomation` 生成对应测试工程和断点元数据。

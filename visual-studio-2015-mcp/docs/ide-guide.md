@@ -64,7 +64,7 @@ SolutionBuild 没有 Rebuild 方法，因此 rebuild 调用固定的 IDE 标准�
 
 在 VS 已配置的 WP8.1／Win10M 项目和目标中，build/deploy/go 走同一 IDE 项目系统与调试器；phone 工具继续提供 SDK 设备发现、应用操作和截图输入。IDE sessionId、CoreCon deviceId、XDE PID、部署目标和应用身份仍是不同标识，不能互换。
 
-本轮实测覆盖桌面 Framework 项目。**WP8.1／Win10M 的 IDE 部署、客体断点、客体变量尚未完成端到端验证**，也尚无统一 PhoneSession、控件树或持久手机输入桥接。详见手机指南及 mobile-performance 资源。
+WP8.1 与 Win10M 专用 TEMP fixture 已完成 IDE 构建、两种部署 scope、guest 输入、源码断点、locals 21/42、单步、恢复与截图。持久 PhoneSession 绑定项目清单和设备，两个平台可同时持有独立会话。暂停时可调用 `vs2015_ide_guest_app_identity` 核对 SDK 包身份，或用 `vs2015_ide_xaml_tree` 和 `vs2015_ide_xaml_action` 检查并操作 WinRT XAML 控件。当前 XAML 公开 MCP 实机回归覆盖 WP8.1。完整参数和验证边界见 [手机指南](phone-guide.md)。
 
 ## 验证与来源
 

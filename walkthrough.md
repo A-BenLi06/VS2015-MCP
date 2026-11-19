@@ -365,3 +365,9 @@ PhoneSessions 使用现有 PID/启动时间/VM GUID/CoreCon 双端点校验，�
 ## 2026-11-19T21:47:15+08:00 — 生成可复用的 XAML 自动化 fixture
 
 New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBox 与 invokePauseLine 元数据，替代实机准备阶段的临时文件补丁。保留默认 fixture 行为。新建 TEMP fixture 经 MSBuild 14 x86 成功生成 AppX，编译无错误。
+
+## 2026-11-19T21:50:23+08:00 — v0.4.0 文档与版本说明
+
+更新 README、手机指南和手机客体性能指南，记录 88 个工具、持久 PhoneSession、XAML 操作、Guest WPR 的 status/start/stop 约束和真实 ETL 证据边界。package.json、package-lock.json 与 MCP server 版本同步到 0.4.0。
+
+验证补充（2026-11-19T21:57:19+08:00）— 修正旧版指南中的待验证状态，说明 Win10M WPR/Portal、托管堆和应用归因边界。默认单元测试 101 通过、3 项 SDK 检查跳过，已启用 SDK 的完整运行 104/104 通过。标准集成套件 17 通过、23 项显式条件测试跳过，另行实测的 XAML/WPR 均通过。MCP v0.4.0 握手、88 工具、6 个文档资源读取成功。
