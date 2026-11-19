@@ -9,6 +9,7 @@ $ProgressPreference = 'SilentlyContinue'
 $script:RequestJson=[Console]::In.ReadToEnd()
 Import-Module (Join-Path $PSScriptRoot 'NativeProcess.psm1')
 Import-Module (Join-Path $PSScriptRoot 'WindowsPaths.psm1')
+Import-Module (Join-Path $PSScriptRoot 'TraceEventSummary.psm1')
 
 function Fail([string]$Code, [string]$Message) {
     $exception = [InvalidOperationException]::new($Message)
@@ -238,11 +239,13 @@ try {
         'offlineReport' {
             $tool=Resolve-Tool $request 'perfview'
             $analysis=Read-Text $request 'analysis'
-            if($analysis -notin @('cpuStacks','cpuCsv','gcStats')){Fail 'INVALID_REQUEST' 'analysis must be cpuStacks, cpuCsv or gcStats.'}
+            if($analysis -notin @('cpuStacks','cpuCsv','gcStats','eventsXml')){Fail 'INVALID_REQUEST' 'analysis must be cpuStacks, cpuCsv, gcStats or eventsXml.'}
             $inputPath=Resolve-FullPath (Read-Text $request 'inputPath')
             if(-not (Test-Path -LiteralPath $inputPath -PathType Leaf) -or $inputPath -notmatch '(?i)\.etl(?:\.zip)?$'){Fail 'INVALID_REQUEST' 'inputPath must be an existing .etl or .etl.zip file.'}
             $processName=Read-Text $request 'processName'
-            if($analysis -ne 'gcStats' -and [string]::IsNullOrWhiteSpace($processName)){Fail 'INVALID_REQUEST' 'CPU exports require processName; the last matching process instance is selected by PerfView.'}
+            if($analysis -in @('cpuStacks','cpuCsv') -and [string]::IsNullOrWhiteSpace($processName)){Fail 'INVALID_REQUEST' 'CPU exports require processName; the last matching process instance is selected by PerfView.'}
+            $maxTraceBytes=Read-Int $request 'maxTraceBytes' 1073741824 1 4294967296
+            if(-not $inputPath.EndsWith('.zip',[StringComparison]::OrdinalIgnoreCase) -and (Get-Item -LiteralPath $inputPath).Length -gt $maxTraceBytes){Fail 'TRACE_TOO_LARGE' 'Source ETL exceeds maxTraceBytes.'}
             $parent=Resolve-FullPath (Read-Text $request 'outputDirectory' ([IO.Path]::GetTempPath()))
             $runDirectory=Join-Path $parent ('vs2015-offline-'+[Guid]::NewGuid().ToString('N'))
             $inputCopy=Join-Path $runDirectory 'trace.etl'
@@ -264,19 +267,25 @@ try {
                 'cpuStacks' {$args.Add('SaveCPUStacks');$args.Add($inputCopy);$args.Add($processName);$pattern='*.perfView.xml.zip'}
                 'cpuCsv' {$args.Add('SaveCPUStacksAsCsv');$args.Add($inputCopy);$args.Add($processName);$args.Add('10');$args.Add('LastProcess');$pattern='*.perfView.csv';$notes.Add('PerfView CSV replaces commas in names, its Inc column is count rather than InclusiveMetric, and numeric formatting is culture-dependent; retain raw CSV and do not infer milliseconds from Inc.')}
                 'gcStats' {$args.Add('GCStats');$args.Add($inputCopy);$pattern='*.gcStats.html';$notes.Add('GCStats contains all CLR processes, does not filter by processId/processName, and PID reuse may overwrite a per-PID CSV.')}
+                'eventsXml' {$args.Add('DumpEventsAsXml');$args.Add($inputCopy);$args.Add((Join-Path $runDirectory 'events.xml'));$pattern='events.xml';$notes.Add('Full trace events are exported without a process filter. The bounded XML summary does not prove app attribution or symbol completeness.')}
             }
-            if($analysis -ne 'gcStats'){$notes.Add('CPU selection uses the last matching process name, not PID plus start time. Same-name instances require explicit review before attributing results to a selected live process.')}
+            if($analysis -in @('cpuStacks','cpuCsv')){$notes.Add('CPU selection uses the last matching process name, not PID plus start time. Same-name instances require explicit review before attributing results to a selected live process.')}
             $plan=New-Plan $tool @($args) $timeout
             $result=[ordered]@{operation=$operation;dryRun=$dryRun;analysis=$analysis;inputPath=$inputPath;inputCopy=$inputCopy;extraction=$extraction;outputDirectory=$runDirectory;plan=$plan;notes=@($notes);collectorVersion=$tool.version}
             if(-not $dryRun){
                 $null=[IO.Directory]::CreateDirectory($runDirectory)
                 if($null -eq $extraction){[IO.File]::Copy($inputPath,$inputCopy,$false)}
+                if((Get-Item -LiteralPath $inputCopy).Length -gt $maxTraceBytes){Fail 'TRACE_TOO_LARGE' 'Copied ETL exceeds maxTraceBytes.'}
                 $result['execution']=Invoke-Plan $plan
                 $result['exitCode']=$result.execution.exitCode;$result['timedOut']=$result.execution.timedOut
                 $result['files']=@(Get-ChildItem -LiteralPath $runDirectory -Recurse -File | Select-Object @{n='path';e={$_.FullName}},Length)
                 $outputs=@(Get-ChildItem -LiteralPath $runDirectory -Recurse -File -Filter $pattern | Where-Object {$_.Length -gt 0})
                 $result['reportFiles']=@($outputs | ForEach-Object {$_.FullName})
                 if($result.execution.exitCode -eq 0 -and -not $result.execution.timedOut -and -not $outputs.Count){$result['error']=@{code='NO_OFFLINE_REPORT';message='PerfView returned without a nonempty expected report. Inspect analysis.log; the copied trace is not a report.'}}
+                if($analysis -eq 'eventsXml' -and $outputs.Count -eq 1 -and $result.execution.exitCode -eq 0 -and -not $result.execution.timedOut){
+                    try{$result['eventSummary']=Read-TraceEventSummary -Path $outputs[0].FullName}
+                    catch{$result['error']=@{code='EVENT_SUMMARY_FAILED';message=$_.Exception.Message};$result['eventSummary']=@{eventContentValidated=$false}}
+                }
             }
         }
         'capture' {

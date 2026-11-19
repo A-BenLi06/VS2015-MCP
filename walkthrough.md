@@ -395,3 +395,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 增加 VS2015_TEST_WIN10M_PORTAL_CONTEXT 显式启用的公共工具链回归：绑定 guest、查询进程/性能/包、状态/profile 选择、采集/停止/下载、SHA256/history 一致性及独立清理。
 - ETL 必须至少包含首个完整 buffer，拒绝声称大 buffer 的截断文件；兼容已验证 WP8.1 真实 ETL 头部。
 - 10 项相关测试通过；Portal 实机测试缺少已启用的端点故明确跳过。此前启用本机 SDK 的完整测试 116/116 通过，专用 Win10M 测试 VM 已确认关闭（EnabledState=3），原有 WP8.1 模拟器与 IDE 保留。
+
+## 2026-11-20T01:39:25+08:00 — 客体 ETL 事件内容与身份线索报告
+
+- PerfView offline report 增加 eventsXml，使用官方 DumpEventsAsXml，在隔离副本上导出；流式 XMLReader 禁止 DTD/外部实体，限制文档和分组大小，返回事件计数、CPU sample 事件数、原样 loss header 和进程生命周期属性。
+- 真实 WP8.1 trace 含未解码的 classic task/opcode 事件；保留 unresolvedEventCount，不将它们丢弃或捏造名称。PID/name 分组不视为唯一进程实例，事件计数不伪装成 CPU 毫秒，保留符号/堆/应用归因边界。
+- 对原始 ETL 补齐 maxTraceBytes 复制前后检查。2 项解析/schema 测试通过（PID 重用、截断、DTD、未知事件）；真实公共 MCP 导出回归通过：10,941 事件、145 CPU samples、17 unresolved、39 进程生命周期观察，history 与立即返回一致。证据 TEMP/v15-guest-events-gNAM2B。
