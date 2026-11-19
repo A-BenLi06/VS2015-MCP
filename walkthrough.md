@@ -318,3 +318,9 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 - 接入暂停 UI 线程上的有界 XAML 树查询、快照节点 ID、受保护的 Invoke/ValuePattern/TextBox.Text 操作，并通过 PhoneSession 转发。
 - 共用严格的调试器字符串编解码，传递不确定执行的 operationMayContinue 和 details，操作分发后废弃旧节点，避免误重放。
 - 验证 npm test 全部 101 项通过，包括编译后的 C# 字符串、Base64、整数检查及公开 schema/错误传播。接手的实机回归与其准备脚本尚需修正和执行，当前提交记录该验证边界。
+
+## 2026-11-19T21:11:07+08:00 — XAML 实机回归等待真实恢复执行并保留证据
+
+- 首次实机测试虽然 SDK 属性回读成功，截图仍显示 Ready 21。修正测试，在暂停后移除自有断点，恢复后等待新的 run 事件，核对 counter 23 和仅两条 setText/invoke 分发事件。
+- 保存每次 MCP 调用和返回，检查 fixture 路径、解决方案和断点位置。清理使用独立于已取消测试的请求，验证 stop/detach/PhoneSession 清理结果。
+- 验证相关 3 项单元测试通过，专用 WP8.1 实机测试通过（133.5 秒）。目视确认 xaml-mcp-5sm0IP/xaml-result44.png 显示 Result 44 及包含引号、反斜杠、中文、竖线和冒号的文本。完整证据位于 TEMP/vs2015-wp81-fa9a30ef98e74fabaf349f5ed7bee4b2。测试自有 IDE/XDE 已清理。

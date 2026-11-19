@@ -19,6 +19,10 @@ test('owned WP8.1 PhoneSession verifies guest identity, inspects XAML tree, sets
   const context = JSON.parse(await readFile(path.resolve(contextFile), 'utf8'));
   const fixture = JSON.parse(await readFile(path.resolve(context.fixtureManifest), 'utf8'));
   assert.ok(within(os.tmpdir(), fixture.root));
+  for (const name of ['source', 'project', 'solution']) {
+    assert.equal(path.dirname(path.resolve(fixture[name])).toLowerCase(), path.resolve(fixture.root).toLowerCase());
+  }
+  assert.ok(Number.isInteger(context.invokePauseLine));
   assert.equal(context.ownsIde, true);
   assert.equal(context.ownsXde, true);
 
@@ -26,7 +30,17 @@ test('owned WP8.1 PhoneSession verifies guest identity, inspects XAML tree, sets
   const repo = fileURLToPath(new URL('../../', import.meta.url));
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(repo, 'src/server.mjs')], cwd: repo }));
 
-  const raw = (name, args = {}, timeout = 300000) => client.callTool({ name, arguments: args }, { timeout, signal: t.signal });
+  const artifacts = await mkdtemp(path.join(fixture.root, 'xaml-mcp-'));
+  const records = [];
+  const cleanupErrors = [];
+  let cleaning = false;
+  let debugStarted = false;
+  const raw = async (name, args = {}, timeout = 300000) => {
+    const res = await client.callTool({ name, arguments: args }, { timeout, ...(cleaning ? {} : { signal: t.signal }) });
+    records.push({ name, args, timestampUtc: new Date().toISOString(), result: res.structuredContent, isError: res.isError });
+    await writeFile(path.join(artifacts, 'results.json'), JSON.stringify(records, null, 2));
+    return res;
+  };
   const call = async (name, args = {}, timeout = 300000) => {
     const res = await raw(name, args, timeout);
     assert.equal(res.isError, false, `${name}: ${JSON.stringify(res)}`);
@@ -35,12 +49,12 @@ test('owned WP8.1 PhoneSession verifies guest identity, inspects XAML tree, sets
 
   let ideSessionId;
   let phoneSessionId;
-  const artifacts = await mkdtemp(path.join(fixture.root, 'xaml-mcp-'));
 
   try {
     ideSessionId = (await call('vs2015_attach', { processId: context.ide.processId, expectedStartTimeUtc: context.ide.startTimeUtc })).sessionId;
     const status = await call('vs2015_solution_status', { sessionId: ideSessionId });
     assert.equal(status.debugger.mode, 'design');
+    assert.equal(path.resolve(status.fullName).toLowerCase(), path.resolve(fixture.solution).toLowerCase());
     const proj = status.projects.find(p => path.resolve(p.fileName).toLowerCase() === path.resolve(fixture.project).toLowerCase());
     assert.ok(proj);
 
@@ -76,7 +90,10 @@ test('owned WP8.1 PhoneSession verifies guest identity, inspects XAML tree, sets
       await new Promise(r => setTimeout(r, 500));
     }
 
-    await pIde('vs2015_ide_debug_breakpoints', { action: 'add', file: fixture.source, line: context.invokePauseLine ?? (fixture.breakpointLine + 2) });
+    const added = await pIde('vs2015_ide_debug_breakpoints', { action: 'add', file: fixture.source, line: context.invokePauseLine });
+    const breakpointIds = added.breakpoints.filter(bp => bp.owned).map(bp => bp.breakpointId);
+    assert.ok(breakpointIds.length);
+    debugStarted = true;
     const go = await pIde('vs2015_ide_debug_control', { action: 'go' }, 150000);
     await pIde('vs2015_ide_debug_wait', { mode: 'run', afterSequence: go.afterSequence, timeoutMs: 120000 }, 130000);
 
@@ -89,6 +106,11 @@ test('owned WP8.1 PhoneSession verifies guest identity, inspects XAML tree, sets
       if (paused.reached) break;
     }
     assert.equal(paused?.reached, true, 'Guest breakpoint was not hit after tapping');
+    assert.equal(path.resolve(paused.currentFrame.sourceFile).toLowerCase(), path.resolve(fixture.source).toLowerCase());
+    assert.equal(paused.currentFrame.line, context.invokePauseLine);
+    for (const breakpointId of breakpointIds) {
+      await pIde('vs2015_ide_debug_breakpoints', { action: 'delete', breakpointId });
+    }
 
     const guestIdentity = await pIde('vs2015_ide_guest_app_identity', {
       pauseId: paused.pauseId,
@@ -201,28 +223,45 @@ test('owned WP8.1 PhoneSession verifies guest identity, inspects XAML tree, sets
       evaluationTimeoutMs: 2500,
     }, 90000);
     assert.equal(afterInvokeTree.nodes.find(n => n.automationId === 'StatusValue')?.text, 'Result: 44');
+    const counter = await pIde('vs2015_ide_debug_evaluate', { pauseId: afterInvokeTree.pauseId, expression: 'counter' });
+    assert.equal(counter.isValidValue, true);
+    assert.equal(counter.value, '23');
+    const events = await pIde('vs2015_ide_events', { afterSequence: 0, limit: 500 });
+    assert.deepEqual(events.events.filter(event => event.kind === 'xamlActionDispatch').map(event => event.action), ['setText', 'invoke']);
 
     // Resume and capture PNG screenshot
-    await pIde('vs2015_ide_debug_control', { action: 'go' }, 150000);
-    await new Promise(r => setTimeout(r, 1200));
+    const resumed = await pIde('vs2015_ide_debug_control', { action: 'go' }, 150000);
+    const running = await pIde('vs2015_ide_debug_wait', { mode: 'run', afterSequence: resumed.afterSequence, timeoutMs: 30000 }, 40000);
+    assert.equal(running.reached, true, JSON.stringify(running));
+    await new Promise(r => setTimeout(r, 3000));
     const pngPath = path.join(artifacts, 'xaml-result44.png');
     const shot = await raw('phone_session_screenshot', { phoneSessionId, path: pngPath, includeImage: true });
     assert.equal(shot.isError, false, JSON.stringify(shot));
     assert.ok(shot.content.some(item => item.type === 'image' && item.mimeType === 'image/png'));
     assert.equal((await readFile(pngPath)).subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
     await writeFile(path.join(artifacts, 'summary.json'), JSON.stringify({ passed: true, pngPath, text: specialText, status: 'Result: 44' }, null, 2));
+    t.diagnostic(`XAML results and screenshot for visual verification at ${artifacts}`);
   } finally {
-    if (phoneSessionId) await raw('phone_session_close', { phoneSessionId }).catch(() => {});
+    cleaning = true;
+    if (phoneSessionId) {
+      try {
+        const closed = await call('phone_session_close', { phoneSessionId });
+        assert.equal(closed.cleanupStatus, 'completed');
+        assert.deepEqual(closed.cleanupWarnings, []);
+      } catch (error) { cleanupErrors.push(error); }
+    }
     if (ideSessionId) {
       try {
         const st = await call('vs2015_ide_debug_state', { sessionId: ideSessionId });
-        if (st.mode !== 'design') {
+        if (debugStarted && st.mode !== 'design') {
           await call('vs2015_ide_debug_control', { sessionId: ideSessionId, action: 'stop' });
-          await call('vs2015_ide_debug_wait', { sessionId: ideSessionId, mode: 'design', timeoutMs: 30000 });
+          assert.equal((await call('vs2015_ide_debug_wait', { sessionId: ideSessionId, mode: 'design', timeoutMs: 30000 })).reached, true);
         }
-      } catch {}
-      await raw('vs2015_detach', { sessionId: ideSessionId }).catch(() => {});
+      } catch (error) { cleanupErrors.push(error); }
+      try { assert.deepEqual((await call('vs2015_detach', { sessionId: ideSessionId })).cleanupWarnings, []); }
+      catch (error) { cleanupErrors.push(error); }
     }
-    await client.close().catch(() => {});
+    await client.close();
+    assert.equal(cleanupErrors.length, 0, cleanupErrors.map(error => error.message).join('\n'));
   }
 });
