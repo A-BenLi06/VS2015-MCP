@@ -339,3 +339,7 @@ Published Chinese diagnostics/performance and debugging guides with Microsoft do
 ## 2026-11-19T21:17:37+08:00 — 将 Guest WPR 绑定到持久手机控制器
 
 PhoneSessions 使用现有 PID/启动时间/VM GUID/CoreCon 双端点校验，在同一个已连接设备上执行 WPR status/start/stop。关闭先释放 WPR stream，返回可能继续的采集 receipt，再释放 CoreCon。桥接完整传递 operationMayContinue 和 details，Node 保留该不确定标志。相关传输及 PowerShell 生命周期 14 项测试通过。
+
+## 2026-11-19T21:20:40+08:00 — 公开 Guest WPR MCP 工具与历史 artifact
+
+新增 phone_session_wpr_status/start/stop，复用 PhoneSession 的串行队列和设备绑定。首次 status 创建或加入历史 run，命令返回和失败均写入 guest-wpr artifact，采集 receipt/原生日志/ETL 放在 run 内。Stop 可在 IDE 已退出时清理原设备。测试发现 Node 继承环境中的 PSModulePath 不能自动解析 Get-FileHash，改用 .NET 流式 SHA256。相关 schema、历史错误传播、生命周期及会话管理 42 项测试通过。

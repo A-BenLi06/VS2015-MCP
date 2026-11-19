@@ -23,6 +23,12 @@ function Get-GuestWprHash([byte[]]$Bytes) {
     $sha=[Security.Cryptography.SHA256]::Create()
     try{return ([BitConverter]::ToString($sha.ComputeHash($Bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
 }
+function Get-GuestWprFileHash([string]$Path) {
+    $stream=[IO.File]::OpenRead($Path)
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try{return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','').ToLowerInvariant()}
+    finally{$sha.Dispose();$stream.Dispose()}
+}
 function Write-GuestWprJson([string]$Path,$Value) {
     $directory=[IO.Path]::GetDirectoryName($Path);[void][IO.Directory]::CreateDirectory($directory)
     $temp=Join-Path $directory ('.pending-'+[guid]::NewGuid().ToString('N')+'.json')
@@ -241,7 +247,7 @@ function Stop-Wp81GuestWprCapture {
         try{if($stream.Read($header,0,4) -ne 4){throw (New-GuestWprError 'GUEST_WPR_ETL_INVALID' 'Missing ETL buffer header.')}}finally{$stream.Dispose()}
         $buffer=[BitConverter]::ToUInt32($header,0)
         if($buffer -lt 4096 -or $buffer -gt 16777216 -or $buffer%1024 -ne 0 -or $file.Length -lt $buffer){throw (New-GuestWprError 'GUEST_WPR_ETL_INVALID' 'The downloaded file does not have a plausible ETL buffer header.')}
-        $record.trace=@{path=$path;bytes=$file.Length;sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();bufferSize=$buffer;headerPlausible=$true;eventContentValidated=$false}
+        $record.trace=@{path=$path;bytes=$file.Length;sha256=(Get-GuestWprFileHash $path);bufferSize=$buffer;headerPlausible=$true;eventContentValidated=$false}
         $record.state='stopped-artifact-verified';$record.operationMayContinue=$false
         $record.lastStatus=(Get-Wp81GuestWprStatus $Controller).status
         if($record.lastStatus.state -eq 'recording'){throw (New-GuestWprError 'GUEST_WPR_STOP_UNCONFIRMED' 'The native status still reports an active recording after Stop.' $record.lastStatus $true)}

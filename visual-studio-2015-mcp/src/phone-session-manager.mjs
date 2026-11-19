@@ -5,6 +5,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { PhoneBridgeClient, createPhoneBridgeLauncher } from './phone-client.mjs';
+import { appendEvent, createRun, readRun, runDirectory, saveArtifact } from './history.mjs';
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const sameScalar = (a, b) => Object.is(a, b);
@@ -286,6 +287,42 @@ export class PhoneSessionManager {
     const output = input.path ? path.resolve(input.path) : path.join(os.tmpdir(), 'vs2015-mcp-captures', randomUUID() + '.png');
     await mkdir(path.dirname(output), { recursive: true }); this.assertAvailable(record, context.signal);
     return this.public(record, await this.sdk(record, 'capture', { sessionId: record.backendId, path: output }, context));
+  }); }
+  guestWpr(input, ctx = {}) { return this.enqueue(input.phoneSessionId, input, ctx, async (record, context) => {
+    const operations = { status: 'guestWprStatus', start: 'guestWprStart', stop: 'guestWprStop' };
+    const operation = operations[input.action];
+    check(operation, 'GUEST_WPR_INVALID_ACTION', 'Select status, start or stop.');
+    check(record.input.coreConDeviceId, 'GUEST_WPR_BINDING_REQUIRED', 'Open the phone session with an exact CoreCon device and locale.');
+    // Stopping an owned capture remains possible after project edits or IDE exit.
+    // The original SDK controller still checks the VM and both endpoint addresses.
+    if (input.action !== 'stop') await this.validate(record, context);
+    if (!record.wprRunId) {
+      check(input.action === 'status', 'GUEST_WPR_STATUS_REQUIRED', 'Observe WPR status before starting a capture.');
+      const run = input.runId ? await readRun(input.runId) : await createRun({ operation: 'phone:guest-wpr', context: { target: record.identity, ideBinding: record.snapshot ?? null } });
+      record.wprRunId = run.id;
+    }
+    check(!input.runId || input.runId === record.wprRunId, 'GUEST_WPR_HISTORY_CONFLICT', 'This phone session already has a WPR history run.');
+    const args = { sessionId: record.backendId };
+    if (input.action === 'status') args.artifactRoot = path.join(runDirectory(record.wprRunId), 'guest-wpr', record.id);
+    if (input.action === 'start') Object.assign(args, { profiles: input.profiles, exclusiveGuest: input.exclusiveGuest,
+      allowUnknownStatus: input.allowUnknownStatus, observedStatusFingerprint: input.observedStatusFingerprint,
+      metadata: { operation: input.operation, ideBinding: record.snapshot ?? null } });
+    if (input.action === 'stop') Object.assign(args, { captureId: input.captureId, exclusiveGuest: input.exclusiveGuest });
+    await appendEvent(record.wprRunId, { kind: 'guestWprRequested', action: input.action, phoneSessionId: record.id });
+    let result;
+    try { result = await this.sdk(record, operation, args, context); }
+    catch (error) {
+      result = { error: { code: error.code ?? 'GUEST_WPR_FAILED', message: error.message,
+        operationMayContinue: error.operationMayContinue ?? error.backendError?.operationMayContinue ?? false,
+        details: error.details ?? error.backendError?.details } };
+    }
+    let artifact;
+    try { artifact = await saveArtifact(record.wprRunId, 'guest-wpr', { action: input.action, result }); }
+    catch (error) {
+      fail('GUEST_WPR_HISTORY_FAILED', 'The WPR operation returned, but its history artifact could not be saved. Inspect the returned result and durable receipt.',
+        { operationMayContinue: input.action !== 'status', details: { runId: record.wprRunId, result, cause: error.message } });
+    }
+    return { ...this.public(record, result), runId: record.wprRunId, artifactId: artifact.artifactId, artifactPath: artifact.path };
   }); }
   ide(input, ctx = {}) {
     const inheritedTimeout = input.timeoutMs ?? (
