@@ -81,6 +81,9 @@ test('Portal schemas reject raw credentials and arbitrary HTTP routes', () => {
   assert.equal(connect.parse({ ...input, certificateSha256: 'a'.repeat(64) }).certificateSha256, 'a'.repeat(64));
   assert.throws(() => connect.parse({ ...input, certificateSha256: 'a'.repeat(64), caPath: 'root.pem' }));
   assert.throws(() => connect.parse({ ...input, certificateSha256: 'invalid' }));
+  assert.throws(() => connect.parse({ ...input, pairingPin: 'secret' }));
+  assert.throws(() => connect.parse({ ...input, pairingPinEnv: 'PIN', usernameEnv: 'USER_NAME', passwordEnv: 'PASSWORD' }));
+  assert.equal(connect.parse({ ...input, pairingPinEnv: 'MOBILE_PIN' }).pairingPinEnv, 'MOBILE_PIN');
   const read = definitions.find(d => d.name === 'phone_session_portal_read').schema;
   assert.throws(() => read.parse({ phoneSessionId: IDS.vm, resource: '/api/wpr/trace' }));
   const start = definitions.find(d => d.name === 'phone_session_portal_wpr_start').schema;

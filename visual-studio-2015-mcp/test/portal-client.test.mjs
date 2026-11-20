@@ -62,3 +62,13 @@ test('Portal streams exact ETL bytes and enforces response/header limits', async
   assert.throws(() => portalEtlEvidence({ bytes: 4096, prefix: oversizedBuffer }), { code: 'PORTAL_ETL_INVALID' });
   assert.equal(portalEtlEvidence({ bytes: 1048576, prefix: oversizedBuffer }).headerPlausible, true);
 });
+
+test('Mobile authentication redirects are identified without following or exposing cookies', async t => {
+  let calls = 0;
+  const baseUrl = await server(t, (q, r) => { calls++; r.writeHead(307, { Location: '/authenticate.htm', 'Set-Cookie': 'Session=private' }); r.end(); });
+  const c = await new PortalClient({ baseUrl, allowInsecureHttp: true }).initialize();
+  await assert.rejects(c.request('/api/os/info'), { code: 'PORTAL_AUTH_REQUIRED', operationMayContinue: false,
+    details: { httpStatus: 307, authentication: 'mobile-pairing' } });
+  assert.equal(calls, 1); assert.equal(c.cookies.size, 0);
+  await assert.rejects(new PortalClient({ baseUrl, allowInsecureHttp: true, pairingPinEnv: 'PIN' }).initialize(), { code: 'PORTAL_CREDENTIALS_INVALID' });
+});

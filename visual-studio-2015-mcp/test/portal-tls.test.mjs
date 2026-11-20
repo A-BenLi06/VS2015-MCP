@@ -59,3 +59,29 @@ test('pin configuration rejects HTTP, malformed fingerprints and mixed trust mod
     { baseUrl: 'https://127.0.0.1', certificateSha256: '0'.repeat(64), caPath: 'unused.pem' },
   ]) await assert.rejects(new PortalClient(config).initialize(), { code: 'PORTAL_TLS_CONFIG_INVALID' });
 });
+
+test('Mobile pairing uses one nonpersistent request and keeps root-scoped cookies private', async t => {
+  const key = await readFile(new URL('./fixtures/portal-tls/test-key.pem', import.meta.url));
+  const cert = await readFile(new URL('./fixtures/portal-tls/legacy-cert.pem', import.meta.url));
+  const calls = [];
+  const server = https.createServer({ key, cert }, (q, r) => {
+    const url = new URL(q.url, 'https://fixture'); calls.push({ url, headers: q.headers });
+    if (url.pathname === '/authenticate.htm') { r.setHeader('Set-Cookie', 'CSRF-Token=csrf; Path=/; Secure'); return r.end('Pair page'); }
+    if (url.pathname === '/api/authorize/pair') {
+      assert.equal(q.method, 'POST'); assert.equal(url.searchParams.get('pin'), 'aB12Z9'); assert.equal(url.searchParams.get('persistent'), '0');
+      assert.equal(q.headers['x-csrf-token'], 'csrf'); assert.equal(q.headers.cookie, 'CSRF-Token=csrf');
+      r.setHeader('Set-Cookie', ['MobileSession=private-token; Path=/; Secure; HttpOnly', 'Foreign=bad; Domain=elsewhere.test; Path=/', 'Narrow=bad; Path=/other']);
+      return r.end();
+    }
+    assert.equal(q.headers.cookie, 'CSRF-Token=csrf; MobileSession=private-token'); r.end('{"authenticated":true}');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
+  process.env.PORTAL_TEST_PAIRING_PIN = 'aB12Z9'; t.after(() => delete process.env.PORTAL_TEST_PAIRING_PIN);
+  const c = await new PortalClient({ baseUrl: `https://127.0.0.1:${server.address().port}`, pairingPinEnv: 'PORTAL_TEST_PAIRING_PIN',
+    certificateSha256: new X509Certificate(cert).fingerprint256.replaceAll(':', '').toLowerCase() }).initialize();
+  await c.pairMobile(); const result = await c.request('/api/os/info');
+  assert.deepEqual(result.data, { authenticated: true }); assert.equal(calls.length, 3);
+  assert.ok(!JSON.stringify(result).includes('private-token')); assert.ok(!JSON.stringify(result).includes('aB12Z9'));
+  c.close(); assert.equal(c.cookies.size, 0);
+});

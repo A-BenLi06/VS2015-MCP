@@ -420,3 +420,10 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 用户启用 Portal/discovery 后，确认真实模拟器 80/443 已监听，HTTP 307 指向 HTTPS。默认 TLS 拒绝未知签发者；设备根证书缺少 CA 扩展，提供 CA 后仍报 INVALID_PURPOSE。服务叶证书只有 CN/IP，无 SAN，签名经设备根公钥核对一致。
 - 新增显式 certificateSha256 信任模式，与 caPath 互斥，仅支持 HTTPS；TLS 握手后核对完整叶证书指纹及有效期，核对成功前不创建 HTTP 请求，不发送凭据。保留默认 CA/hostname 模式；不自动下载、接受或轮换指纹，不修改系统信任。返回及 receipt 记录 transportTrust。
 - 55 项相关回归通过，其中真实本地 TLS 服务验证默认拒绝、正确指纹成功、错误指纹/过期/未生效证书零 HTTP 分发，以及握手取消/超时 operationMayContinue:false。测试密钥明确限于本地 fixture；真实设备证书保留 TEMP。
+
+## 2026-11-20T11:04:19+08:00 — 支持 Mobile 非持久配对并准备本机交互验证
+
+- 真实 HTTPS API 返回 307 到同源 authenticate.htm；读取设备提供的 authenticate.js 确认 POST /api/authorize/pair 的 pin/persistent 协议。将该认证重定向明确分类为 PORTAL_AUTH_REQUIRED，仍不自动跟随。
+- connect 增加 pairingPinEnv，与 Basic 凭据互斥、仅允许 HTTPS；一次非持久配对，CSRF 和同源根路径认证 Cookie 仅存客户端内存，关闭时清除。PIN、Cookie 不进入返回/history，认证操作不自动重试。
+- 新增 PowerShell 7 交互验证入口，掩码读取 PIN 并只通过进程环境传给 MCP，结束恢复原值；从真实 profile 目录手动选取 JSON Pointer，复用公开 MCP 回归链。修复 SDK stdio 默认环境不继承自定义凭据变量的问题，仅显式转发上下文指定的变量。
+- 完整 SDK 单元套件 125/125 通过；本地真实 TLS 配对/私有 Cookie、认证重定向、凭据环境范围及原生命周期回归通过。PowerShell/Node 入口语法检查通过。真实 Mobile 配对与 WPR 仍等待用户在本机输入临时码，未将模拟服务结果当作实机通过。

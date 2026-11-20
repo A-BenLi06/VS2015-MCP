@@ -42,6 +42,7 @@ export class PortalSession {
     requireThat(proof?.matched === true && net.isIP(host) && host === proof.guestAddress, 'PORTAL_TARGET_MISMATCH', 'Portal origin must use the exact guest IP observed by this CoreCon-bound phone session.');
     const client = await clientFactory(input).initialize();
     try {
+      if (input.pairingPinEnv) await client.pairMobile(context);
       const osInfo = (await client.request(routes.os, context)).data;
       requireThat(osInfo && typeof osInfo.ComputerName === 'string' && osInfo.ComputerName && typeof osInfo.OsVersion === 'string' && osInfo.OsVersion,
         'PORTAL_IDENTITY_INVALID', 'Portal did not return an OS identity.');

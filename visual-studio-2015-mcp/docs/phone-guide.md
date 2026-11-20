@@ -161,11 +161,13 @@ Windows Mobile Device Portal从Windows10 Mobile1511开始提供，需要设备�
 
 启动模拟器与启用 Portal 是两个步骤。先用 `phone_devices` 选择配置并调用 `phone_start`，再刷新 `phone_discover` 的进程身份，检查 `phone_status` 的 shellReady/toolsReady，并用 `phone_screenshot` 确认手机画面。随后在手机设置的开发者页面检查 Device Portal 和实际连接地址；模拟器就绪不代表 Portal 已监听。TCP 超时不能单独证明 Portal 未启用，也可能是网络不可达。
 
-v0.5.0 的 `phone_session_portal_*` 工具使用持久 PhoneSession。`phone_session_portal_connect` 要求先绑定 CoreCon GUID/locale，并用实际 guest IP 提供 `baseUrl`。协议和端口来自设备设置，不自动探测或假定；微软文档中的 `http://127.0.0.1:10080` 是 USB 转发地址，不能直接替换为模拟器 guest IP。当前会话绑定不接受 localhost 转发端点。HTTP 需 `allowInsecureHttp:true`；HTTPS 保持证书和主机名校验，可通过 `caPath` 提供 PEM CA。`usernameEnv/passwordEnv` 指定服务进程的 Basic 认证凭据变量名，不能直接传密码；浏览器配对状态不会自动传递给 MCP。工具拒绝重定向，不启用 Portal、不完成配对，也不自动重试变更请求。
+`phone_session_portal_*` 工具使用持久 PhoneSession。`phone_session_portal_connect` 要求先绑定 CoreCon GUID/locale，并用实际 guest IP 提供 `baseUrl`。协议和端口来自设备设置，不自动探测或假定；微软文档中的 `http://127.0.0.1:10080` 是 USB 转发地址，不能直接替换为模拟器 guest IP。当前会话绑定不接受 localhost 转发端点。HTTP 需 `allowInsecureHttp:true`；HTTPS 默认保持证书和主机名校验，可通过 `caPath` 提供 PEM CA。`usernameEnv/passwordEnv` 指定服务进程的 Basic 认证凭据变量名，不能直接传密码；浏览器配对状态不会自动传递给 MCP。工具拒绝重定向，不启用 Portal，也不自动重试变更请求。
 
 需要保留模拟器供人工设置或继续调试时，只调用 `phone_session_close` 释放 MCP 会话，并核对 `vmClosed:false`；`phone_stop` 会请求关闭模拟器。重启后必须重新读取 processId/startTimeUtc/vmId，不能沿用上次运行的会话参数。
 
 Win10M 14393 实测生成的证书可能缺少现代 CA/SAN 扩展，提供 `caPath` 后仍可能报 `INVALID_PURPOSE`。这种目标可显式提供 `certificateSha256`（叶证书 DER 的 SHA-256，64 位小写十六进制），与 `caPath` 互斥。此模式以已核对的完整叶证书作为目标身份，替代 CA 链和主机名验证；每次请求先检查指纹及证书有效期，再发送任何 HTTP 内容，包括凭据。证书变化、到期、尚未生效及握手取消均在请求分发前拒绝，不自动更新指纹。调用方应从可信设备通道核对指纹；工具不会把未认证下载自动当成信任。返回的 `transportTrust` 和采集 receipt 记录实际信任模式。默认 HTTPS 验证不变，也不修改系统证书库。
+
+Mobile 14393 未配对时，API 会以 307 跳转到同源 `/authenticate.htm`；工具将它报告为 `PORTAL_AUTH_REQUIRED`，不自动跟随。需要配对时，先在手机点击 Pair，再通过服务进程的环境变量提供当次六位码，并将变量名传入 `pairingPinEnv`。它与 Basic 凭据互斥，必须使用 HTTPS；只请求一次非持久配对（`persistent=0`）。验证码与返回的认证 Cookie 不进入结果/history，Cookie 仅在当前客户端内存中使用，关闭时清除。协议来自实际设备提供的 authenticate.js，不能把 Basic 用户名/密码或其他浏览器的登录状态当作 Mobile 配对结果。
 
 `phone_session_portal_read` 的 `resource` 可选 `os`、`packages`、`processes`、`systemPerformance`、`etwProviders`、`profiles`、`traceFiles`，保留原始 JSON 并返回 history artifact。端点不支持、认证失败与连接超时分别报错。调用前核对原 VM/进程/CoreCon 地址对与连接时的 OS 信息。
 
@@ -223,5 +225,7 @@ XAML fixture 可通过 `test/fixtures/New-Wp81Fixture.ps1 -XamlAutomation` 创�
 `VS2015_TEST_WP81_WPR_CONTEXT` 指向 TEMP 内 JSON，包含 `ownsXde:true`、`exclusiveGuest:true`、`processId`、`startTimeUtc`、`vmId`、`coreConDeviceId`、`localeId` 和按实际原生状态决定的 `allowUnknownStatus`。执行 `node --test test/integration/guest-wpr-runtime.test.mjs`。测试会采集五秒 CPU profile、下载 ETL、校验 SHA256、核对历史记录并关闭会话。模拟器由创建它的调用方管理。
 
 `VS2015_TEST_WIN10M_PORTAL_CONTEXT` 使用 TEMP 内自有测试设备 JSON，同样提供 `ownsXde:true`、`exclusiveGuest:true`、processId/startTimeUtc/vmId/CoreCon/locale，另加 `baseUrl`、按实际连接选择的 `allowInsecureHttp`、可选 usernameEnv/passwordEnv/caPath 或 certificateSha256、从设备目录选择的 `profilePointer`。执行 `node --test test/integration/portal-runtime.test.mjs`，它通过公开 MCP 读取进程、性能、包并完成五秒采集、下载、hash/history 一致性和清理。仅对独占测试客体启用；默认跳过。
+
+需要本机交互输入 Mobile 配对码时，在上述 TEMP 上下文加入 `pairingPinEnv` 变量名，然后用 PowerShell 7 运行 `./scripts/Test-MobilePortal.ps1 -ContextPath <context.json>`。脚本掩码读取六位码，仅通过子进程环境传给 MCP，退出后恢复原环境变量。省略 `profilePointer` 时会打印真实设备的 profile 目录并要求选择 JSON Pointer；选择后执行同一公开 MCP 验证链，结果写入打印的 TEMP 目录。脚本保留模拟器运行，不修改设备的 Portal/discovery/认证开关，也不保存 PIN 或配对 Cookie。
 
 2026-11-20（UTC+08:00）本机专用 Win10M Portal 端口无响应，未完成上述真实端点回归。模拟 HTTP 生命周期、认证/CSRF、重定向拒绝、身份变化、超时不重放和下载恢复测试已通过；不以此宣称 Win10M WPR 实机成功。

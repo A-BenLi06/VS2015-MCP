@@ -28,6 +28,8 @@ export class PortalClient {
       throw new PortalError('PORTAL_TLS_CONFIG_INVALID', 'certificateSha256 requires an HTTPS origin, a lowercase SHA-256 leaf fingerprint, and no caPath.');
     if (Boolean(this.config.usernameEnv) !== Boolean(this.config.passwordEnv))
       throw new PortalError('PORTAL_CREDENTIALS_INVALID', 'Supply usernameEnv and passwordEnv together.');
+    if (this.config.pairingPinEnv && (!this.origin.startsWith('https:') || this.config.usernameEnv))
+      throw new PortalError('PORTAL_CREDENTIALS_INVALID', 'Mobile pairing requires HTTPS and cannot be combined with Basic credentials.');
     if (this.config.usernameEnv) {
       const user = process.env[this.config.usernameEnv], password = process.env[this.config.passwordEnv];
       if (!user || password === undefined || /[:\r\n]/.test(user)) throw new PortalError('PORTAL_CREDENTIALS_INVALID', 'The named credential environment variables are absent or invalid.');
@@ -40,8 +42,18 @@ export class PortalClient {
     }
     return this;
   }
+  async pairMobile(context) {
+    const pin = process.env[this.config.pairingPinEnv];
+    if (typeof pin !== 'string' || pin.length !== 6 || /[\x00-\x20\x7f]/.test(pin))
+      throw new PortalError('PORTAL_CREDENTIALS_INVALID', 'The named Mobile pairing environment variable must contain the current six-character code.');
+    // Protocol observed in the Mobile 14393 authenticate.js served by the device.
+    // Nonpersistent cookie, one dispatch, no PIN or response cookies in results.
+    await this.request('/authenticate.htm', { ...context, responseType: 'discard' });
+    await this.request('/api/authorize/pair', { ...context, method: 'POST', mutation: true,
+      query: { pin, persistent: '0' }, responseType: 'discard', acceptPairingCookies: true });
+  }
   close() { this.closed = true; this.authorization = undefined; this.cookies.clear(); }
-  async request(route, { method = 'GET', query = {}, signal, timeoutMs = 15000, destination, maxBytes = destination ? 536870912 : 8388608, mutation = false } = {}) {
+  async request(route, { method = 'GET', query = {}, signal, timeoutMs = 15000, destination, maxBytes = destination ? 536870912 : 8388608, mutation = false, responseType = 'json', acceptPairingCookies = false } = {}) {
     if (this.closed) throw new PortalError('PORTAL_CLOSED', 'The Portal connection is closed.');
     if (signal?.aborted) throw new PortalError('PORTAL_CANCELLED', 'Cancelled before dispatch.', { operationMayContinue: false });
     if (!route.startsWith('/') || route.startsWith('//')) throw new PortalError('PORTAL_ROUTE_INVALID', 'Invalid internal route.');
@@ -76,12 +88,22 @@ export class PortalClient {
       const status = response.statusCode;
       if (status !== 200) {
         response.destroy();
-        const code = status === 401 || status === 403 ? 'PORTAL_AUTH_REQUIRED' : status === 404 || status === 405 ? 'PORTAL_UNSUPPORTED' : status >= 300 && status < 400 ? 'PORTAL_REDIRECT_REFUSED' : 'PORTAL_HTTP_ERROR';
-        throw new PortalError(code, `Device Portal returned HTTP ${status}.`, { details: { httpStatus: status } });
+        let mobilePairing = false;
+        if (status >= 300 && status < 400 && response.headers.location) {
+          try { const location = new URL(response.headers.location, this.origin); mobilePairing = location.origin === this.origin && location.pathname === '/authenticate.htm'; } catch {}
+        }
+        const code = status === 401 || status === 403 || mobilePairing ? 'PORTAL_AUTH_REQUIRED' : status === 404 || status === 405 ? 'PORTAL_UNSUPPORTED' : status >= 300 && status < 400 ? 'PORTAL_REDIRECT_REFUSED' : 'PORTAL_HTTP_ERROR';
+        throw new PortalError(code, `Device Portal returned HTTP ${status}.`, { details: { httpStatus: status, ...(mobilePairing ? { authentication: 'mobile-pairing' } : {}) } });
       }
       for (const cookie of response.headers['set-cookie'] ?? []) {
         const match = /^([!#$%&'*+.^_`|~\w-]+)=([^;\r\n]*)/.exec(cookie);
-        if (match && match[1] === 'CSRF-Token') this.cookies.set(match[1], match[2]);
+        if (!match) continue;
+        const attributes = cookie.split(';').slice(1).map(part => part.trim());
+        const domain = attributes.find(part => /^domain=/i.test(part))?.slice(7).toLowerCase().replace(/^\./, '');
+        const cookiePath = attributes.find(part => /^path=/i.test(part))?.slice(5);
+        if (domain && domain !== url.hostname.toLowerCase()) continue;
+        const pairingCookie = acceptPairingCookies && url.protocol === 'https:' && cookiePath === '/';
+        if (match[1] === 'CSRF-Token' || pairingCookie) this.cookies.set(match[1], match[2]);
       }
       const length = Number(response.headers['content-length']);
       if (Number.isFinite(length) && length > maxBytes) { response.destroy(); throw new PortalError('PORTAL_RESPONSE_TOO_LARGE', 'The response exceeds its byte limit.'); }
@@ -91,11 +113,12 @@ export class PortalClient {
         if (bytes > maxBytes) { response.destroy(); throw new PortalError('PORTAL_RESPONSE_TOO_LARGE', 'The response exceeds its byte limit.'); }
         hash.update(chunk);
         if (prefix.length < 64) prefix = Buffer.concat([prefix, chunk.subarray(0, 64 - prefix.length)]);
-        if (file) await file.writeFile(chunk); else chunks.push(chunk);
+        if (file) await file.writeFile(chunk); else if (responseType !== 'discard') chunks.push(chunk);
       }
       const result = { bytes, sha256: hash.digest('hex'), contentType: response.headers['content-type'] ?? null,
         startedAtUtc, completedAtUtc: new Date().toISOString() };
       if (file) { await file.sync(); await file.close(); file = null; await rename(temporary, destination); temporary = null; return { ...result, path: destination, prefix }; }
+      if (responseType === 'discard') return result;
       try { return { ...result, data: JSON.parse(Buffer.concat(chunks).toString('utf8').replace(/^\uFEFF/, '')) }; }
       catch { throw new PortalError('PORTAL_RESPONSE_INVALID', 'Device Portal did not return valid JSON.'); }
     } catch (error) {
