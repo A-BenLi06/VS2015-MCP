@@ -34,7 +34,7 @@ test('owned Mobile Portal public MCP reads guest data and collects an explicitly
     phoneSessionId = (await call('phone_session_open', { processId: context.processId, expectedStartTimeUtc: context.startTimeUtc,
       expectedVmId: context.vmId, coreConDeviceId: context.coreConDeviceId, localeId: context.localeId, timeoutMs: 120000 })).phoneSessionId;
     const connected = await call('phone_session_portal_connect', { phoneSessionId, baseUrl: context.baseUrl,
-      allowInsecureHttp: context.allowInsecureHttp === true, usernameEnv: context.usernameEnv, passwordEnv: context.passwordEnv, caPath: context.caPath });
+      allowInsecureHttp: context.allowInsecureHttp === true, usernameEnv: context.usernameEnv, passwordEnv: context.passwordEnv, caPath: context.caPath, certificateSha256: context.certificateSha256 });
     assert.ok(connected.osInfo.OsVersion);
     for (const resource of ['processes', 'systemPerformance', 'packages']) {
       const read = await call('phone_session_portal_read', { phoneSessionId, resource }); assert.ok(read.data);

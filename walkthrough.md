@@ -414,3 +414,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 根据用户反馈重新启动专用 Win10M 14393 模拟器并置前，确认 shellReady/toolsReady、768×1280 客体截图和 CoreCon 双端点绑定。保留模拟器运行供用户设置；不再在本轮收尾调用 phone_stop。
 - 真实公开 MCP open/status/endpoint/close 通过；close 返回 vmClosed:false、cleanupWarnings 为空。HTTPS Portal connect 返回 PORTAL_TIMEOUT、operationMayContinue:false。HTTP 80/10080 和 TCP 443/10443 均无响应，不能据此区分未启用服务与网络不可达，未宣称 Portal 采集成功。证据保留 TEMP/win10m-reopen-fbwzMR/results.json。
 - 手机指南补充启动与 Portal 启用的区分、保留模拟器的会话关闭方式、重启后身份刷新、USB localhost:10080 与 guest IP 的区别，以及 Basic 认证和浏览器配对状态边界。依据微软 Mobile Device Portal 文档及实际工具返回复核；git diff --check 通过。
+
+## 2026-11-20T10:55:33+08:00 — 兼容旧 Win10M Portal 的显式叶证书固定
+
+- 用户启用 Portal/discovery 后，确认真实模拟器 80/443 已监听，HTTP 307 指向 HTTPS。默认 TLS 拒绝未知签发者；设备根证书缺少 CA 扩展，提供 CA 后仍报 INVALID_PURPOSE。服务叶证书只有 CN/IP，无 SAN，签名经设备根公钥核对一致。
+- 新增显式 certificateSha256 信任模式，与 caPath 互斥，仅支持 HTTPS；TLS 握手后核对完整叶证书指纹及有效期，核对成功前不创建 HTTP 请求，不发送凭据。保留默认 CA/hostname 模式；不自动下载、接受或轮换指纹，不修改系统信任。返回及 receipt 记录 transportTrust。
+- 55 项相关回归通过，其中真实本地 TLS 服务验证默认拒绝、正确指纹成功、错误指纹/过期/未生效证书零 HTTP 分发，以及握手取消/超时 operationMayContinue:false。测试密钥明确限于本地 fixture；真实设备证书保留 TEMP。

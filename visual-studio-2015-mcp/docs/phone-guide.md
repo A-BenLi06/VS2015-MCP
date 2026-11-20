@@ -165,6 +165,8 @@ v0.5.0 的 `phone_session_portal_*` 工具使用持久 PhoneSession。`phone_ses
 
 需要保留模拟器供人工设置或继续调试时，只调用 `phone_session_close` 释放 MCP 会话，并核对 `vmClosed:false`；`phone_stop` 会请求关闭模拟器。重启后必须重新读取 processId/startTimeUtc/vmId，不能沿用上次运行的会话参数。
 
+Win10M 14393 实测生成的证书可能缺少现代 CA/SAN 扩展，提供 `caPath` 后仍可能报 `INVALID_PURPOSE`。这种目标可显式提供 `certificateSha256`（叶证书 DER 的 SHA-256，64 位小写十六进制），与 `caPath` 互斥。此模式以已核对的完整叶证书作为目标身份，替代 CA 链和主机名验证；每次请求先检查指纹及证书有效期，再发送任何 HTTP 内容，包括凭据。证书变化、到期、尚未生效及握手取消均在请求分发前拒绝，不自动更新指纹。调用方应从可信设备通道核对指纹；工具不会把未认证下载自动当成信任。返回的 `transportTrust` 和采集 receipt 记录实际信任模式。默认 HTTPS 验证不变，也不修改系统证书库。
+
 `phone_session_portal_read` 的 `resource` 可选 `os`、`packages`、`processes`、`systemPerformance`、`etwProviders`、`profiles`、`traceFiles`，保留原始 JSON 并返回 history artifact。端点不支持、认证失败与连接超时分别报错。调用前核对原 VM/进程/CoreCon 地址对与连接时的 OS 信息。
 
 下表列出相关官方 API。当前工具覆盖包列表和 OS 读取，Portal 包部署及应用启停尚未开放；已有 CoreCon/部署工具继续适用。
@@ -220,6 +222,6 @@ XAML fixture 可通过 `test/fixtures/New-Wp81Fixture.ps1 -XamlAutomation` 创�
 
 `VS2015_TEST_WP81_WPR_CONTEXT` 指向 TEMP 内 JSON，包含 `ownsXde:true`、`exclusiveGuest:true`、`processId`、`startTimeUtc`、`vmId`、`coreConDeviceId`、`localeId` 和按实际原生状态决定的 `allowUnknownStatus`。执行 `node --test test/integration/guest-wpr-runtime.test.mjs`。测试会采集五秒 CPU profile、下载 ETL、校验 SHA256、核对历史记录并关闭会话。模拟器由创建它的调用方管理。
 
-`VS2015_TEST_WIN10M_PORTAL_CONTEXT` 使用 TEMP 内自有测试设备 JSON，同样提供 `ownsXde:true`、`exclusiveGuest:true`、processId/startTimeUtc/vmId/CoreCon/locale，另加 `baseUrl`、按实际连接选择的 `allowInsecureHttp`、可选 usernameEnv/passwordEnv/caPath、从设备目录选择的 `profilePointer`。执行 `node --test test/integration/portal-runtime.test.mjs`，它通过公开 MCP 读取进程、性能、包并完成五秒采集、下载、hash/history 一致性和清理。仅对独占测试客体启用；默认跳过。
+`VS2015_TEST_WIN10M_PORTAL_CONTEXT` 使用 TEMP 内自有测试设备 JSON，同样提供 `ownsXde:true`、`exclusiveGuest:true`、processId/startTimeUtc/vmId/CoreCon/locale，另加 `baseUrl`、按实际连接选择的 `allowInsecureHttp`、可选 usernameEnv/passwordEnv/caPath 或 certificateSha256、从设备目录选择的 `profilePointer`。执行 `node --test test/integration/portal-runtime.test.mjs`，它通过公开 MCP 读取进程、性能、包并完成五秒采集、下载、hash/history 一致性和清理。仅对独占测试客体启用；默认跳过。
 
 2026-11-20（UTC+08:00）本机专用 Win10M Portal 端口无响应，未完成上述真实端点回归。模拟 HTTP 生命周期、认证/CSRF、重定向拒绝、身份变化、超时不重放和下载恢复测试已通过；不以此宣称 Win10M WPR 实机成功。

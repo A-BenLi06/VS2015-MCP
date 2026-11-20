@@ -47,10 +47,11 @@ export class PortalSession {
         'PORTAL_IDENTITY_INVALID', 'Portal did not return an OS identity.');
       const run = input.runId ? await readRun(input.runId) : await createRun({ operation: 'phone:portal', context: { target: identity, origin, osInfo } });
       const directory = path.join(runDirectory(run.id), 'portal', randomUUID()); await mkdir(directory, { recursive: true });
-      return new PortalSession(client, { ...identity, origin, guestAddress: proof.guestAddress }, osInfo, run.id, directory);
+      const transportTrust = input.certificateSha256 ? { mode: 'leaf-sha256', certificateSha256: input.certificateSha256 } : { mode: origin.startsWith('https:') ? 'certificate-authority' : 'explicit-http' };
+      return new PortalSession(client, { ...identity, origin, guestAddress: proof.guestAddress, transportTrust }, osInfo, run.id, directory);
     } catch (error) { client.close(); throw error; }
   }
-  public() { return { origin: this.client.origin, osInfo: this.osInfo, runId: this.runId, activeCapture: this.activeId ? captureView(this.captures.get(this.activeId)) : null }; }
+  public() { return { origin: this.client.origin, transportTrust: this.target.transportTrust, osInfo: this.osInfo, runId: this.runId, activeCapture: this.activeId ? captureView(this.captures.get(this.activeId)) : null }; }
   async validate(proof, context) {
     requireThat(proof?.matched === true && proof.guestAddress === this.target.guestAddress && proof.vmId?.toLowerCase() === this.target.vmId.toLowerCase(),
       'PORTAL_TARGET_CHANGED', 'The guest endpoint or VM changed after Portal connection.');

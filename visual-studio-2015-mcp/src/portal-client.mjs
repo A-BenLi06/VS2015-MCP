@@ -3,6 +3,7 @@ import https from 'node:https';
 import { readFile, open, rename, rm } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { stableJson } from './canonical.mjs';
+import { connectPinnedPortal } from './portal-tls.mjs';
 
 export class PortalError extends Error {
   constructor(code, message, details = {}) { super(message); this.code = code; Object.assign(this, details); }
@@ -23,6 +24,8 @@ export class PortalClient {
   async initialize() {
     if (this.origin.startsWith('http:') && this.config.allowInsecureHttp !== true)
       throw new PortalError('PORTAL_HTTP_CONSENT_REQUIRED', 'HTTP requires allowInsecureHttp:true for this explicit endpoint.');
+    if (this.config.certificateSha256 !== undefined && (!/^[a-f0-9]{64}$/.test(this.config.certificateSha256) || !this.origin.startsWith('https:') || this.config.caPath))
+      throw new PortalError('PORTAL_TLS_CONFIG_INVALID', 'certificateSha256 requires an HTTPS origin, a lowercase SHA-256 leaf fingerprint, and no caPath.');
     if (Boolean(this.config.usernameEnv) !== Boolean(this.config.passwordEnv))
       throw new PortalError('PORTAL_CREDENTIALS_INVALID', 'Supply usernameEnv and passwordEnv together.');
     if (this.config.usernameEnv) {
@@ -49,7 +52,7 @@ export class PortalClient {
     if (this.authorization) headers.Authorization = this.authorization;
     if (this.cookies.size) headers.Cookie = [...this.cookies].map(([key, value]) => key + '=' + value).join('; ');
     headers[method === 'GET' ? 'CSRF-Token' : 'X-CSRF-Token'] = this.cookies.get('CSRF-Token') ?? (method === 'GET' ? 'Fetch' : '');
-    let dispatched = false, timer, file, temporary, bytes = 0;
+    let dispatched = false, timer, file, temporary, pinnedSocket, pinnedAgent, bytes = 0;
     const startedAtUtc = new Date().toISOString();
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -58,8 +61,14 @@ export class PortalClient {
       if (destination) { temporary = destination + '.' + randomUUID() + '.pending'; file = await open(temporary, 'wx'); }
       if (signal?.aborted) throw new PortalError('PORTAL_CANCELLED', 'Cancelled before dispatch.');
       timer = setTimeout(() => controller.abort(), timeoutMs);
+      if (this.config.certificateSha256) {
+        pinnedSocket = await connectPinnedPortal(url, this.config.certificateSha256, controller.signal);
+        if (this.closed) throw new PortalError('PORTAL_CLOSED', 'The Portal connection closed before dispatch.');
+        pinnedAgent = new https.Agent({ keepAlive: false, maxCachedSessions: 0 });
+        pinnedAgent.createConnection = () => pinnedSocket;
+      }
       const response = await new Promise((resolve, reject) => {
-        const request = (url.protocol === 'https:' ? https : http).request(url, { method, headers, agent: false, ca: this.ca, signal: controller.signal }, resolve);
+        const request = (url.protocol === 'https:' ? https : http).request(url, { method, headers, agent: pinnedAgent ?? false, ca: this.ca, signal: controller.signal }, resolve);
         request.once('error', reject);
         // After end(), even a transport failure cannot prove non-execution.
         dispatched = true; request.end();
@@ -90,12 +99,13 @@ export class PortalClient {
       try { return { ...result, data: JSON.parse(Buffer.concat(chunks).toString('utf8').replace(/^\uFEFF/, '')) }; }
       catch { throw new PortalError('PORTAL_RESPONSE_INVALID', 'Device Portal did not return valid JSON.'); }
     } catch (error) {
-      const failure = error instanceof PortalError ? error : new PortalError(controller.signal.aborted ? (signal?.aborted ? 'PORTAL_CANCELLED' : 'PORTAL_TIMEOUT') : 'PORTAL_CONNECTION_FAILED',
+      const failure = error instanceof PortalError ? error : new PortalError(controller.signal.aborted ? (signal?.aborted ? 'PORTAL_CANCELLED' : 'PORTAL_TIMEOUT') : error.code?.startsWith('PORTAL_CERTIFICATE_') ? error.code : 'PORTAL_CONNECTION_FAILED',
         controller.signal.aborted ? 'The Device Portal request was interrupted.' : 'The Device Portal connection failed; check the endpoint and certificate.', { details: { causeCode: error.code ?? null } });
       failure.operationMayContinue = mutation && dispatched;
       throw failure;
     } finally {
       clearTimeout(timer); signal?.removeEventListener('abort', abort);
+      pinnedAgent?.destroy(); pinnedSocket?.destroy();
       await file?.close(); if (temporary) await rm(temporary, { force: true });
     }
   }
