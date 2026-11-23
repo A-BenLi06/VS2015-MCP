@@ -434,3 +434,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 真实 status 为 State:Idle、SessionType:normal，与微软参考示例的字段安排相反；新增严格双格式识别，保留原始响应、指纹与 responseFormat，缺失/冲突/未知组合继续拒绝采集。
 - 真实 systemperf 将指标 JSON 放在 Reason 字符串中。仅该资源做格式识别，要求实际 CpuLoad/PageSize 数值，返回解码 data 与原始 rawData；不把任意 Reason 错误文本当作性能指标。
 - 19 项相关测试通过，覆盖两种 WPR 字段安排、boot/未知状态、原生命周期和 JSON-in-Reason/无效数据。真实记录重放解析得到 idle/normal 和有效 CPU/PageSize 指标。尚未开始真实 WPR 采集。
+
+## 2026-11-23T18:47:31+08:00 — 明确 Mobile 缺少 ETL 文件枚举时的证据边界
+
+- 真实 Win10M 的 /api/wpr/tracefiles 返回 {SessionType:normal,State:Idle}，没有 Items。新增能力判断，捕获前记录 available:false、原始响应和 beforeFiles:null；不伪造空文件列表。
+- 允许这种设备走 Stop 直接返回 ETL 的采集路径；若未返回 ETL，停止状态仍保留，但报告 PORTAL_TRACE_LIST_UNAVAILABLE，拒绝以后凭枚举的旧文件假定为本次产物。未知/畸形列表仍报错，不忽略网络或认证故障。
+- 9 项 WPR/响应测试通过，新增直接 ETL 成功及缺少基线拒绝关联文件两种回归。此前完整 SDK 套件 127/127 通过。真实读取已确认 44 个进程、98 个包；旧验证连接关闭无警告，vmClosed:false，未启动 WPR。

@@ -66,6 +66,19 @@ export class PortalSession {
     const profiles = (await this.client.request(routes.profiles, context)).data;
     return { status, profiles, profilesFingerprint: portalFingerprint(profiles), activeCapture: this.activeId ? captureView(this.captures.get(this.activeId)) : null };
   }
+  async traceListing(context) {
+    let raw;
+    try { raw = (await this.client.request(routes.traceFiles, context)).data; }
+    catch (error) {
+      if (error.code === 'PORTAL_UNSUPPORTED') return { available: false, reason: 'unsupported', httpStatus: error.details?.httpStatus };
+      throw error;
+    }
+    // Mobile 14393 can return its WPR status here instead of a file listing.
+    // This is missing enumeration support, not evidence of an empty directory.
+    if (raw && Object.keys(raw).length === 2 && statusOf(raw).state !== 'unknown')
+      return { available: false, reason: 'status-response', raw };
+    return { available: true, items: traceItems(raw), raw };
+  }
   async start(input, context) {
     requireThat(input.exclusiveGuest === true, 'PORTAL_EXCLUSIVE_REQUIRED', 'Starting requires exclusive guest profiling.');
     requireThat(!this.activeId, 'PORTAL_CAPTURE_ACTIVE', 'This session already owns a possible recording.');
@@ -74,10 +87,11 @@ export class PortalSession {
     requireThat(observed.status.fingerprint === input.observedStatusFingerprint && observed.profilesFingerprint === input.profilesFingerprint,
       'PORTAL_OBSERVATION_CHANGED', 'WPR status or profile catalog changed; inspect fresh observations.');
     const profile = profileValue(observed.profiles, input.profilePointer);
-    const beforeFiles = traceItems((await this.client.request(routes.traceFiles, context)).data);
+    const beforeFileListing = await this.traceListing(context);
+    const beforeFiles = beforeFileListing.available ? beforeFileListing.items : null;
     const captureId = randomUUID(), directory = path.join(this.directory, captureId); await mkdir(directory);
     const record = { captureId, state: 'prepared', operation: input.operation, profile, profilePointer: input.profilePointer, target: this.target,
-      beforeFiles, receiptPath: path.join(directory, 'capture.json'), directory, createdAtUtc: new Date().toISOString(), trace: null, operationMayContinue: false };
+      beforeFiles, beforeFileListing, receiptPath: path.join(directory, 'capture.json'), directory, createdAtUtc: new Date().toISOString(), trace: null, operationMayContinue: false };
     await this.save(record, 'prepared'); this.captures.set(captureId, record); this.activeId = captureId;
     try {
       record.operationMayContinue = true; await this.save(record, 'start-dispatching');
@@ -132,7 +146,10 @@ export class PortalSession {
     return captureView(record);
   }
   async refreshFiles(record, context) {
-    const items = traceItems((await this.client.request(routes.traceFiles, context)).data);
+    requireThat(record.beforeFileListing.available, 'PORTAL_TRACE_LIST_UNAVAILABLE', 'This device did not enumerate trace files before capture; new-file association cannot be established. Check the retained stop response.');
+    const listing = await this.traceListing(context);
+    requireThat(listing.available, 'PORTAL_TRACE_LIST_UNAVAILABLE', 'This device no longer enumerates trace files. Check the retained stop response.');
+    const items = listing.items;
     const before = new Set(record.beforeFiles.map(fileKey));
     record.candidateFiles = items.filter(item => !before.has(fileKey(item)));
     await this.save(record, record.state);

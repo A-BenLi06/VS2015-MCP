@@ -19,7 +19,7 @@ async function fixture(t) {
     if (route === '/api/os/info') return json(state.os);
     if (route === '/api/wpr/status') return json({ State: state.unknown ? '?' : state.running ? 'Running' : 'Idle', SessionType: 'normal' });
     if (route === '/perfprofiles/profiles.json') return json(state.profiles);
-    if (route === '/api/wpr/tracefiles') return json({ Items: state.files });
+    if (route === '/api/wpr/tracefiles') return json(state.statusInsteadOfFiles ? { SessionType: 'normal', State: state.running ? 'Running' : 'Idle' } : { Items: state.files });
     if (route === '/api/wpr/trace' && q.method === 'POST') {
       state.running = true; state.profile = url.searchParams.get('profile');
       if (state.loseStart) return q.socket.destroy();
@@ -108,4 +108,24 @@ test('Portal supports direct ETL stop responses without downloading again', asyn
   assert.equal(stopped.state, 'stopped-artifact-verified'); assert.equal(stopped.trace.bytes, 4096);
   await f.session.download({ captureId: started.captureId }, {});
   assert.equal(f.state.calls.some(([, url]) => url.startsWith('/api/wpr/tracefile?')), false);
+});
+
+test('Mobile status-only trace listing preserves unknown baseline while accepting a direct ETL', async t => {
+  const f = await fixture(t); f.state.statusInsteadOfFiles = true; f.state.direct = true;
+  const started = await f.session.start(await f.startArgs(), {});
+  assert.equal(started.beforeFiles, null); assert.equal(started.beforeFileListing.available, false);
+  assert.deepEqual(started.beforeFileListing.raw, { SessionType: 'normal', State: 'Idle' });
+  const stopped = await f.session.stop({ captureId: started.captureId, exclusiveGuest: true }, {});
+  assert.equal(stopped.state, 'stopped-artifact-verified'); assert.equal(stopped.trace.bytes, f.etl.length);
+});
+
+test('missing file enumeration never associates an old file with a stopped capture', async t => {
+  const f = await fixture(t); f.state.statusInsteadOfFiles = true;
+  const started = await f.session.start(await f.startArgs(), {});
+  const stopped = await f.session.stop({ captureId: started.captureId, exclusiveGuest: true }, {});
+  assert.equal(stopped.state, 'stopped'); assert.equal(stopped.trace, null);
+  assert.equal(stopped.artifactError.code, 'PORTAL_TRACE_LIST_UNAVAILABLE');
+  f.state.statusInsteadOfFiles = false;
+  await assert.rejects(f.session.download({ captureId: started.captureId, filename: 'guest trace.etl' }, {}), { code: 'PORTAL_TRACE_LIST_UNAVAILABLE' });
+  assert.equal(f.state.calls.some(([, route]) => route.startsWith('/api/wpr/tracefile?')), false);
 });
