@@ -44,6 +44,7 @@ export async function validateMobilePortal(contextPath, { signal, selectProfile,
     assert.ok(connected.osInfo.OsVersion);
     for (const resource of ['processes', 'systemPerformance', 'packages']) {
       const read = await call('phone_session_portal_read', { phoneSessionId, resource }); assert.ok(read.data);
+      if (resource === 'systemPerformance') { assert.ok(Number.isFinite(read.data.CpuLoad)); assert.ok(read.data.PageSize > 0); }
       assert.equal(read.runId, connected.runId);
     }
     const observed = await call('phone_session_portal_wpr_status', { phoneSessionId }); assert.equal(observed.status.state, 'idle');

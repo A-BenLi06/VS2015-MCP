@@ -17,13 +17,13 @@ async function fixture(t) {
     state.calls.push([q.method, q.url]); r.setHeader('Content-Type', 'application/json');
     const json = v => r.end(JSON.stringify(v));
     if (route === '/api/os/info') return json(state.os);
-    if (route === '/api/wpr/status') return json({ SessionType: state.unknown ? '?' : state.running ? 'Running' : 'Idle', State: 'normal' });
+    if (route === '/api/wpr/status') return json({ State: state.unknown ? '?' : state.running ? 'Running' : 'Idle', SessionType: 'normal' });
     if (route === '/perfprofiles/profiles.json') return json(state.profiles);
     if (route === '/api/wpr/tracefiles') return json({ Items: state.files });
     if (route === '/api/wpr/trace' && q.method === 'POST') {
       state.running = true; state.profile = url.searchParams.get('profile');
       if (state.loseStart) return q.socket.destroy();
-      return json({ SessionType: 'Running', State: 'normal' });
+      return json({ State: 'Running', SessionType: 'normal' });
     }
     if (route === '/api/wpr/trace') {
       state.running = false; state.files.push({ Name: 'guest trace.etl', Id: '1', DateCreated: 1234, FileSize: etl.length });

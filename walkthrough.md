@@ -427,3 +427,10 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - connect 增加 pairingPinEnv，与 Basic 凭据互斥、仅允许 HTTPS；一次非持久配对，CSRF 和同源根路径认证 Cookie 仅存客户端内存，关闭时清除。PIN、Cookie 不进入返回/history，认证操作不自动重试。
 - 新增 PowerShell 7 交互验证入口，掩码读取 PIN 并只通过进程环境传给 MCP，结束恢复原值；从真实 profile 目录手动选取 JSON Pointer，复用公开 MCP 回归链。修复 SDK stdio 默认环境不继承自定义凭据变量的问题，仅显式转发上下文指定的变量。
 - 完整 SDK 单元套件 125/125 通过；本地真实 TLS 配对/私有 Cookie、认证重定向、凭据环境范围及原生命周期回归通过。PowerShell/Node 入口语法检查通过。真实 Mobile 配对与 WPR 仍等待用户在本机输入临时码，未将模拟服务结果当作实机通过。
+
+## 2026-11-23T18:45:05+08:00 — 真实 Win10M 配对成功并修正响应解析
+
+- 当前 Win10M 14393 通过公开 MCP 完成非持久配对和 OS 身份绑定，实际读取 Processes、InstalledPackages、systemperf、WPR status/profile 成功。证据 TEMP/portal-live-RcsEzI/results.json，run 2917cc44-066e-43cc-85e0-6587c02bc82c。配对码与认证 Cookie 未写入调用记录。
+- 真实 status 为 State:Idle、SessionType:normal，与微软参考示例的字段安排相反；新增严格双格式识别，保留原始响应、指纹与 responseFormat，缺失/冲突/未知组合继续拒绝采集。
+- 真实 systemperf 将指标 JSON 放在 Reason 字符串中。仅该资源做格式识别，要求实际 CpuLoad/PageSize 数值，返回解码 data 与原始 rawData；不把任意 Reason 错误文本当作性能指标。
+- 19 项相关测试通过，覆盖两种 WPR 字段安排、boot/未知状态、原生命周期和 JSON-in-Reason/无效数据。真实记录重放解析得到 idle/normal 和有效 CPU/PageSize 指标。尚未开始真实 WPR 采集。

@@ -3,15 +3,12 @@ import path from 'node:path';
 import net from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { PortalClient, PortalError, portalFingerprint, portalOrigin, portalEtlEvidence } from './portal-client.mjs';
+import { portalWprStatus as statusOf, portalSystemPerformance } from './portal-responses.mjs';
 import { createRun, readRun, runDirectory, saveArtifact } from './history.mjs';
 
 const routes = Object.freeze({ os: '/api/os/info', packages: '/api/app/packagemanager/packages', processes: '/api/resourcemanager/processes',
   systemPerformance: '/api/resourcemanager/systemperf', etwProviders: '/api/etw/providers', profiles: '/perfprofiles/profiles.json', traceFiles: '/api/wpr/tracefiles' });
 function requireThat(value, code, message) { if (!value) throw new PortalError(code, message); }
-function statusOf(raw) {
-  const state = raw?.SessionType === 'Running' ? 'recording' : raw?.SessionType === 'Idle' ? 'idle' : 'unknown';
-  return { state, mode: raw?.State ?? null, raw, fingerprint: portalFingerprint(raw) };
-}
 function profileValue(catalog, pointer) {
   requireThat(typeof pointer === 'string' && pointer.startsWith('/') && !/~(?![01])/u.test(pointer), 'PORTAL_PROFILE_INVALID', 'profilePointer must identify a string in the observed profile catalog using JSON Pointer.');
   let value = catalog;
@@ -158,7 +155,8 @@ export class PortalSession {
     try {
       if (input.action === 'read') {
         requireThat(Object.hasOwn(routes, input.resource), 'PORTAL_RESOURCE_INVALID', 'Unsupported read resource.');
-        const response = await this.client.request(routes[input.resource], context); result = { resource: input.resource, ...response };
+        const response = await this.client.request(routes[input.resource], context);
+        result = { resource: input.resource, ...response, ...(input.resource === 'systemPerformance' ? portalSystemPerformance(response.data) : {}) };
       } else if (input.action === 'status') result = await this.status(context);
       else if (input.action === 'start') result = await this.start(input, context);
       else if (input.action === 'stop') result = await this.stop(input, context);
