@@ -192,13 +192,15 @@ taskmanager/app所需的 `appid` 和 `package` 在文档中称为hex64编码。�
 ### Portal WPR
 
 1. `phone_session_portal_wpr_status` 返回 `status`、`profiles` 及两份指纹。status 必须为 `idle`、mode 为 `normal`。
-2. 从实际 profile JSON 中选择供 API 使用的 profile 名称字符串，以 JSON Pointer 传 `profilePointer`。例如返回 `{"profiles":[{"id":"actual-profile"}]}` 时使用 `/profiles/0/id`；这是格式示例，字段名和值应以设备响应为准。传 `observedStatusFingerprint`、`profilesFingerprint`、`operation` 和 `exclusiveGuest:true` 调用 start，保存 `captureId`。
+2. 从实际 profile JSON 中选择供 API 使用的值，以 JSON Pointer 传 `profilePointer`。Win10M 14393 的微软 Portal 前端 xperf.js 将 `Profiles[].FileName` 用作请求值，`Name` 仅作显示文字；该设备返回 GeneralProfile.wprp 时应选择 `/Profiles/0/FileName`，不能选择 `/Profiles/0/Name`。其他设备应依据其实际目录和 API 契约选择，不自动猜字段。传 `observedStatusFingerprint`、`profilesFingerprint`、`operation` 和 `exclusiveGuest:true` 调用 start，保存 `captureId`。
 3. 执行应用操作后调用 stop，提供同一 captureId 和 exclusiveGuest。它只分发一次，确认 Idle 后返回直接 ETL 或新增文件的 `candidateFiles`。
 4. 没有直接 `trace` 时调用 download；多个候选必须传实际 `filename`。下载失败可重试 download，不能重放 stop。文件保存到历史目录并计算 SHA256；事件内容用 PerfView `eventsXml` 继续检查。
 
 实际 Mobile 14393 返回 `State:"Idle"/"Running"`、`SessionType:"normal"/"boot"`，与 REST 参考示例的字段安排相反。解析器支持这两种完整组合，用 responseFormat 标记来源；未知、缺失或冲突字段保持 unknown。这个设备的 tracefiles 接口还可能仅返回 WPR 状态，工具将其记录为 `beforeFileListing.available:false` 和 `beforeFiles:null`，保留 Stop 直接返回 ETL 的路径。没有直接 ETL 且缺少文件枚举基线时，返回 `PORTAL_TRACE_LIST_UNAVAILABLE`，不推断旧文件属于本次采集。
 
 WDP 没有远端所有权 token，也不返回采集实例的可靠唯一身份。工具的本地 captureId、VM 校验和前后文件列表依赖持续独占该客体的前提，无法排除外部工具在两次观察之间替换同类采集。不确定响应保留 receipt 和 `operationMayContinue`；关闭会话报告可能继续的采集，不能用新连接接管旧 captureId。Stop/download 可在 IDE 已退出时执行，仍检查 guest 身份。
+
+WPR Start/Stop 的 HTTP 失败在 receipt 的 startError/stopError 和即时错误的 causeDetails 中保留 HTTP 状态及最多 8 KiB 的响应文本，并标记截断；不会自动重放操作。认证和配对响应不启用这一文本记录，避免回显凭据。HTTP 错误后仍需检查实际 WPR 状态，不能只根据错误码推断设备没有执行。
 
 ## 持久 PhoneSession
 

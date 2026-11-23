@@ -72,3 +72,18 @@ test('Mobile authentication redirects are identified without following or exposi
   assert.equal(calls, 1); assert.equal(c.cookies.size, 0);
   await assert.rejects(new PortalClient({ baseUrl, allowInsecureHttp: true, pairingPinEnv: 'PIN' }).initialize(), { code: 'PORTAL_CREDENTIALS_INVALID' });
 });
+
+test('WPR HTTP diagnostics retain bounded error bodies without exposing pairing responses', async t => {
+  let calls = 0;
+  const baseUrl = await server(t, (q, r) => { calls++; r.writeHead(500); r.end('native failure'.repeat(1000)); });
+  const c = await new PortalClient({ baseUrl, allowInsecureHttp: true }).initialize();
+  await assert.rejects(c.request('/api/wpr/trace', { method: 'POST', mutation: true, captureErrorBody: true }), error => {
+    assert.equal(error.code, 'PORTAL_HTTP_ERROR'); assert.equal(error.details.httpStatus, 500);
+    assert.equal(Buffer.byteLength(error.details.responseBody), 8192); assert.equal(error.details.responseBodyTruncated, true);
+    assert.equal(error.operationMayContinue, true); return true;
+  });
+  await assert.rejects(c.request('/api/authorize/pair', { method: 'POST', captureErrorBody: true }), error => {
+    assert.deepEqual(error.details, { httpStatus: 500 }); return true;
+  });
+  assert.equal(calls, 2);
+});

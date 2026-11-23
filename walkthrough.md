@@ -446,3 +446,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 本机交互入口先检查当前进程/启动时间/VM、shell/tools、guest IP、证书和配对页面，再提示输入临时码，避免离线或旧证书时消耗人工输入。连接验证预算提高为 60 秒；不重试配对变更。
 - 手机指南记录真实 14393 响应差异、原始指标保留、缺失文件基线含义，以及已经通过的配对和只读数据范围。真实采集/ETL 尚未完成，未扩大结论。
 - PowerShell 与 Node 语法检查通过；对当前专用模拟器执行 preflight 成功。现有完整 SDK 127/127 与新增文件枚举回归 9/9 已通过。
+
+## 2026-11-23T19:51:38+08:00 — 按微软镜像前端修正 WPR profile 选择并保留失败诊断
+
+- 用户完成配对后，真实公开链路读数成功，但 GeneralProfile 启动被设备 HTTP 错误拒绝，未生成 ETL。记录 TEMP/portal-runtime-zY9YZN，run 78a64c00-5ef4-48d3-804f-31b1d9b59b7f；清理状态读取不满足 Running，未发送 Stop。未将此次失败当作成功采集。
+- 只读提取已安装原始 Flash.vhd 的 MainOS 分区（未修改 VM 镜像），核对微软 Windows/WebManagement/www/default/js/xperf.js，确认 dropdown value 是 Profiles[].FileName，Name 只用于显示。把本机验证上下文改为 /Profiles/0/FileName，对应设备实际 GeneralProfile.wprp；产品仍按显式 JSON Pointer 传值，无硬编码 profile 名。
+- WPR HTTP 失败增加最多 8 KiB 的响应诊断，保存状态/截断标记至 receipt 和即时返回；不记录配对错误体，不自动重试变更。15 项 HTTP/WPR 回归通过，覆盖错误体界限、认证隔离、FileName 原样传值和持久错误一致性。

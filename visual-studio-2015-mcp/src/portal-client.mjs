@@ -53,7 +53,7 @@ export class PortalClient {
       query: { pin, persistent: '0' }, responseType: 'discard', acceptPairingCookies: true });
   }
   close() { this.closed = true; this.authorization = undefined; this.cookies.clear(); }
-  async request(route, { method = 'GET', query = {}, signal, timeoutMs = 15000, destination, maxBytes = destination ? 536870912 : 8388608, mutation = false, responseType = 'json', acceptPairingCookies = false } = {}) {
+  async request(route, { method = 'GET', query = {}, signal, timeoutMs = 15000, destination, maxBytes = destination ? 536870912 : 8388608, mutation = false, responseType = 'json', acceptPairingCookies = false, captureErrorBody = false } = {}) {
     if (this.closed) throw new PortalError('PORTAL_CLOSED', 'The Portal connection is closed.');
     if (signal?.aborted) throw new PortalError('PORTAL_CANCELLED', 'Cancelled before dispatch.', { operationMayContinue: false });
     if (!route.startsWith('/') || route.startsWith('//')) throw new PortalError('PORTAL_ROUTE_INVALID', 'Invalid internal route.');
@@ -87,13 +87,29 @@ export class PortalClient {
       });
       const status = response.statusCode;
       if (status !== 200) {
+        let responseBody, responseBodyTruncated = false, responseBodyUnavailable;
+        // Only explicit WPR diagnostics retain a bounded response body. Pairing
+        // and authentication responses never expose cookies or echoed PINs.
+        if (captureErrorBody && route === '/api/wpr/trace') {
+          const chunks = []; let length = 0;
+          try {
+            for await (const chunk of response) {
+              const remaining = 8192 - length;
+              chunks.push(chunk.subarray(0, remaining)); length += Math.min(chunk.length, remaining);
+              if (chunk.length > remaining) { responseBodyTruncated = true; break; }
+            }
+            responseBody = Buffer.concat(chunks).toString('utf8');
+          } catch { responseBodyUnavailable = true; }
+        }
         response.destroy();
         let mobilePairing = false;
         if (status >= 300 && status < 400 && response.headers.location) {
           try { const location = new URL(response.headers.location, this.origin); mobilePairing = location.origin === this.origin && location.pathname === '/authenticate.htm'; } catch {}
         }
         const code = status === 401 || status === 403 || mobilePairing ? 'PORTAL_AUTH_REQUIRED' : status === 404 || status === 405 ? 'PORTAL_UNSUPPORTED' : status >= 300 && status < 400 ? 'PORTAL_REDIRECT_REFUSED' : 'PORTAL_HTTP_ERROR';
-        throw new PortalError(code, `Device Portal returned HTTP ${status}.`, { details: { httpStatus: status, ...(mobilePairing ? { authentication: 'mobile-pairing' } : {}) } });
+        throw new PortalError(code, `Device Portal returned HTTP ${status}.`, { details: { httpStatus: status,
+          ...(responseBody !== undefined ? { responseBody, responseBodyTruncated } : {}), ...(responseBodyUnavailable ? { responseBodyUnavailable } : {}),
+          ...(mobilePairing ? { authentication: 'mobile-pairing' } : {}) } });
       }
       for (const cookie of response.headers['set-cookie'] ?? []) {
         const match = /^([!#$%&'*+.^_`|~\w-]+)=([^;\r\n]*)/.exec(cookie);

@@ -95,16 +95,17 @@ export class PortalSession {
     await this.save(record, 'prepared'); this.captures.set(captureId, record); this.activeId = captureId;
     try {
       record.operationMayContinue = true; await this.save(record, 'start-dispatching');
-      const result = await this.client.request('/api/wpr/trace', { ...context, method: 'POST', query: { profile }, mutation: true });
+      const result = await this.client.request('/api/wpr/trace', { ...context, method: 'POST', query: { profile }, mutation: true, captureErrorBody: true });
       record.startInterval = { startedAtUtc: result.startedAtUtc, completedAtUtc: result.completedAtUtc };
       record.startStatus = statusOf(result.data);
       requireThat(record.startStatus.state === 'recording' && record.startStatus.mode === 'normal', 'PORTAL_START_UNCONFIRMED', 'Start did not confirm a normal running session.');
       await this.save(record, 'recording'); return captureView(record);
     } catch (error) {
       // Never turn an HTTP error after dispatch into permission to retry Start.
+      record.startError = { code: error.code, message: error.message, details: error.details };
       await this.save(record, 'start-unconfirmed').catch(() => {});
       throw new PortalError('PORTAL_START_UNCONFIRMED', 'Start outcome is uncertain; inspect the capture receipt and status.',
-        { operationMayContinue: true, details: { capture: captureView(record), causeCode: error.code } });
+        { operationMayContinue: true, details: { capture: captureView(record), causeCode: error.code, causeDetails: error.details } });
     }
   }
   owned(input) {
@@ -119,7 +120,7 @@ export class PortalSession {
     requireThat(observed.state === 'recording' && observed.mode === 'normal', 'PORTAL_CAPTURE_CHANGED', 'The owned normal WPR recording is no longer observed.');
     try {
       await this.save(record, 'stop-dispatching');
-      const result = await this.client.request('/api/wpr/trace', { ...context, mutation: true, destination: path.join(record.directory, 'stop-response.bin') });
+      const result = await this.client.request('/api/wpr/trace', { ...context, mutation: true, destination: path.join(record.directory, 'stop-response.bin'), captureErrorBody: true });
       record.stopInterval = { startedAtUtc: result.startedAtUtc, completedAtUtc: result.completedAtUtc };
       // Some WDP versions return ETL directly; others write it and return no body.
       if (result.bytes > 0 && !/json|text|html/i.test(result.contentType ?? '')) {
@@ -135,9 +136,10 @@ export class PortalSession {
       record.operationMayContinue = false;
       await this.save(record, record.trace ? 'stopped-artifact-verified' : 'stopped'); this.activeId = null;
     } catch (error) {
+      record.stopError = { code: error.code, message: error.message, details: error.details };
       await this.save(record, 'stop-unconfirmed').catch(() => {});
       throw new PortalError('PORTAL_STOP_UNCONFIRMED', 'Stop may have executed. It will not be replayed; inspect status and the receipt.',
-        { operationMayContinue: true, details: { capture: captureView(record), causeCode: error.code } });
+        { operationMayContinue: true, details: { capture: captureView(record), causeCode: error.code, causeDetails: error.details } });
     }
     if (!record.trace) {
       try { await this.refreshFiles(record, context); }

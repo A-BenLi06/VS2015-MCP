@@ -21,6 +21,7 @@ async function fixture(t) {
     if (route === '/perfprofiles/profiles.json') return json(state.profiles);
     if (route === '/api/wpr/tracefiles') return json(state.statusInsteadOfFiles ? { SessionType: 'normal', State: state.running ? 'Running' : 'Idle' } : { Items: state.files });
     if (route === '/api/wpr/trace' && q.method === 'POST') {
+      if (state.rejectStart) { r.statusCode = 400; return json({ Reason: 'The selected profile file was not found.' }); }
       state.running = true; state.profile = url.searchParams.get('profile');
       if (state.loseStart) return q.socket.destroy();
       return json({ State: 'Running', SessionType: 'normal' });
@@ -128,4 +129,21 @@ test('missing file enumeration never associates an old file with a stopped captu
   f.state.statusInsteadOfFiles = false;
   await assert.rejects(f.session.download({ captureId: started.captureId, filename: 'guest trace.etl' }, {}), { code: 'PORTAL_TRACE_LIST_UNAVAILABLE' });
   assert.equal(f.state.calls.some(([, route]) => route.startsWith('/api/wpr/tracefile?')), false);
+});
+
+test('WPR failure receipts preserve HTTP diagnostics and keep the observed profile value literal', async t => {
+  const f = await fixture(t); f.state.profiles = { Profiles: [{ Name: 'General display', FileName: 'Actual profile.wprp' }] };
+  const observed = await f.session.status({});
+  const input = { exclusiveGuest: true, operation: 'fixture', profilePointer: '/Profiles/0/FileName',
+    observedStatusFingerprint: observed.status.fingerprint, profilesFingerprint: observed.profilesFingerprint };
+  f.state.rejectStart = true;
+  const failed = await f.session.execute({ action: 'start', ...input }, {});
+  assert.equal(failed.error.code, 'PORTAL_START_UNCONFIRMED');
+  assert.equal(failed.error.details.causeDetails.httpStatus, 400);
+  const record = JSON.parse(await readFile(failed.error.details.capture.receiptPath, 'utf8'));
+  assert.equal(record.startError.details.httpStatus, 400);
+  assert.equal(record.startError.details.responseBody, JSON.stringify({ Reason: 'The selected profile file was not found.' }));
+  assert.equal(record.profile, 'Actual profile.wprp');
+  const [, url] = f.state.calls.find(([method]) => method === 'POST');
+  assert.equal(new URL(url, 'http://fixture').searchParams.get('profile'), 'Actual profile.wprp');
 });
