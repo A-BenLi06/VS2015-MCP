@@ -440,3 +440,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 真实 Win10M 的 /api/wpr/tracefiles 返回 {SessionType:normal,State:Idle}，没有 Items。新增能力判断，捕获前记录 available:false、原始响应和 beforeFiles:null；不伪造空文件列表。
 - 允许这种设备走 Stop 直接返回 ETL 的采集路径；若未返回 ETL，停止状态仍保留，但报告 PORTAL_TRACE_LIST_UNAVAILABLE，拒绝以后凭枚举的旧文件假定为本次产物。未知/畸形列表仍报错，不忽略网络或认证故障。
 - 9 项 WPR/响应测试通过，新增直接 ETL 成功及缺少基线拒绝关联文件两种回归。此前完整 SDK 套件 127/127 通过。真实读取已确认 44 个进程、98 个包；旧验证连接关闭无警告，vmClosed:false，未启动 WPR。
+
+## 2026-11-23T18:49:35+08:00 — 配对前预检与实机证据文档
+
+- 本机交互入口先检查当前进程/启动时间/VM、shell/tools、guest IP、证书和配对页面，再提示输入临时码，避免离线或旧证书时消耗人工输入。连接验证预算提高为 60 秒；不重试配对变更。
+- 手机指南记录真实 14393 响应差异、原始指标保留、缺失文件基线含义，以及已经通过的配对和只读数据范围。真实采集/ETL 尚未完成，未扩大结论。
+- PowerShell 与 Node 语法检查通过；对当前专用模拟器执行 preflight 成功。现有完整 SDK 127/127 与新增文件枚举回归 9/9 已通过。

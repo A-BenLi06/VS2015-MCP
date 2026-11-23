@@ -171,6 +171,8 @@ Mobile 14393 未配对时，API 会以 307 跳转到同源 `/authenticate.htm`�
 
 `phone_session_portal_read` 的 `resource` 可选 `os`、`packages`、`processes`、`systemPerformance`、`etwProviders`、`profiles`、`traceFiles`，保留原始 JSON 并返回 history artifact。端点不支持、认证失败与连接超时分别报错。调用前核对原 VM/进程/CoreCon 地址对与连接时的 OS 信息。
 
+Win10M 14393 的 systemPerformance 实测为 `{"Reason":"<指标 JSON>"}`。该资源在确认 CpuLoad、PageSize 为有效数值后解码为 `data`，并保留 `rawData` 和 `responseFormat:"json-in-reason"`；其他 Reason 文本不会被当成有效性能数据。原始响应的字节数及 SHA-256 仍对应原始传输内容。
+
 下表列出相关官方 API。当前工具覆盖包列表和 OS 读取，Portal 包部署及应用启停尚未开放；已有 CoreCon/部署工具继续适用。
 
 | HTTP请求 | 用途 |
@@ -193,6 +195,8 @@ taskmanager/app所需的 `appid` 和 `package` 在文档中称为hex64编码。�
 2. 从实际 profile JSON 中选择供 API 使用的 profile 名称字符串，以 JSON Pointer 传 `profilePointer`。例如返回 `{"profiles":[{"id":"actual-profile"}]}` 时使用 `/profiles/0/id`；这是格式示例，字段名和值应以设备响应为准。传 `observedStatusFingerprint`、`profilesFingerprint`、`operation` 和 `exclusiveGuest:true` 调用 start，保存 `captureId`。
 3. 执行应用操作后调用 stop，提供同一 captureId 和 exclusiveGuest。它只分发一次，确认 Idle 后返回直接 ETL 或新增文件的 `candidateFiles`。
 4. 没有直接 `trace` 时调用 download；多个候选必须传实际 `filename`。下载失败可重试 download，不能重放 stop。文件保存到历史目录并计算 SHA256；事件内容用 PerfView `eventsXml` 继续检查。
+
+实际 Mobile 14393 返回 `State:"Idle"/"Running"`、`SessionType:"normal"/"boot"`，与 REST 参考示例的字段安排相反。解析器支持这两种完整组合，用 responseFormat 标记来源；未知、缺失或冲突字段保持 unknown。这个设备的 tracefiles 接口还可能仅返回 WPR 状态，工具将其记录为 `beforeFileListing.available:false` 和 `beforeFiles:null`，保留 Stop 直接返回 ETL 的路径。没有直接 ETL 且缺少文件枚举基线时，返回 `PORTAL_TRACE_LIST_UNAVAILABLE`，不推断旧文件属于本次采集。
 
 WDP 没有远端所有权 token，也不返回采集实例的可靠唯一身份。工具的本地 captureId、VM 校验和前后文件列表依赖持续独占该客体的前提，无法排除外部工具在两次观察之间替换同类采集。不确定响应保留 receipt 和 `operationMayContinue`；关闭会话报告可能继续的采集，不能用新连接接管旧 captureId。Stop/download 可在 IDE 已退出时执行，仍检查 guest 身份。
 
@@ -226,6 +230,8 @@ XAML fixture 可通过 `test/fixtures/New-Wp81Fixture.ps1 -XamlAutomation` 创�
 
 `VS2015_TEST_WIN10M_PORTAL_CONTEXT` 使用 TEMP 内自有测试设备 JSON，同样提供 `ownsXde:true`、`exclusiveGuest:true`、processId/startTimeUtc/vmId/CoreCon/locale，另加 `baseUrl`、按实际连接选择的 `allowInsecureHttp`、可选 usernameEnv/passwordEnv/caPath 或 certificateSha256、从设备目录选择的 `profilePointer`。执行 `node --test test/integration/portal-runtime.test.mjs`，它通过公开 MCP 读取进程、性能、包并完成五秒采集、下载、hash/history 一致性和清理。仅对独占测试客体启用；默认跳过。
 
-需要本机交互输入 Mobile 配对码时，在上述 TEMP 上下文加入 `pairingPinEnv` 变量名，然后用 PowerShell 7 运行 `./scripts/Test-MobilePortal.ps1 -ContextPath <context.json>`。脚本掩码读取六位码，仅通过子进程环境传给 MCP，退出后恢复原环境变量。省略 `profilePointer` 时会打印真实设备的 profile 目录并要求选择 JSON Pointer；选择后执行同一公开 MCP 验证链，结果写入打印的 TEMP 目录。脚本保留模拟器运行，不修改设备的 Portal/discovery/认证开关，也不保存 PIN 或配对 Cookie。
+需要本机交互输入 Mobile 配对码时，在上述 TEMP 上下文加入 `pairingPinEnv` 变量名，然后用 PowerShell 7 运行 `./scripts/Test-MobilePortal.ps1 -ContextPath <context.json>`。脚本先核对当前 PID/启动时间/VM、guest 地址、TLS 和配对页面，成功后才掩码读取六位码，仅通过子进程环境传给 MCP，退出后恢复原环境变量。省略 `profilePointer` 时会打印真实设备的 profile 目录并要求选择 JSON Pointer；选择后执行同一公开 MCP 验证链，结果写入打印的 TEMP 目录。脚本保留模拟器运行，不修改设备的 Portal/discovery/认证开关，也不保存 PIN 或配对 Cookie。
 
 2026-11-20（UTC+08:00）本机专用 Win10M Portal 端口无响应，未完成上述真实端点回归。模拟 HTTP 生命周期、认证/CSRF、重定向拒绝、身份变化、超时不重放和下载恢复测试已通过；不以此宣称 Win10M WPR 实机成功。
+
+2026-11-23（UTC+08:00）补充：真实 Mobile 14393 已通过公开 MCP 完成非持久配对、OS 绑定、44 个进程、98 个应用包及 CPU/内存等系统指标读取，并读取 GeneralProfile 目录和 Idle 状态。根据实际响应修正了 WPR 字段排列、指标包装和文件枚举能力判断。完整 WPR 采集/ETL 下载仍待后续验证。

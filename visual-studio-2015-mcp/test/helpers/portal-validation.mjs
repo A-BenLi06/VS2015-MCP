@@ -39,7 +39,7 @@ export async function validateMobilePortal(contextPath, { signal, selectProfile,
     await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(product, 'src/server.mjs')], cwd: product, env: credentialEnvironment(context) }));
     phoneSessionId = (await call('phone_session_open', { processId: context.processId, expectedStartTimeUtc: context.startTimeUtc,
       expectedVmId: context.vmId, coreConDeviceId: context.coreConDeviceId, localeId: context.localeId, timeoutMs: 120000 })).phoneSessionId;
-    const connected = await call('phone_session_portal_connect', { phoneSessionId, baseUrl: context.baseUrl,
+    const connected = await call('phone_session_portal_connect', { phoneSessionId, baseUrl: context.baseUrl, timeoutMs: 60000,
       allowInsecureHttp: context.allowInsecureHttp === true, usernameEnv: context.usernameEnv, passwordEnv: context.passwordEnv, pairingPinEnv: context.pairingPinEnv, caPath: context.caPath, certificateSha256: context.certificateSha256 });
     assert.ok(connected.osInfo.OsVersion);
     for (const resource of ['processes', 'systemPerformance', 'packages']) {
