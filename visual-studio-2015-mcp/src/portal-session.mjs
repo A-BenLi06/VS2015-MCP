@@ -122,9 +122,13 @@ export class PortalSession {
       await this.save(record, 'stop-dispatching');
       const result = await this.client.request('/api/wpr/trace', { ...context, mutation: true, destination: path.join(record.directory, 'stop-response.bin'), captureErrorBody: true });
       record.stopInterval = { startedAtUtc: result.startedAtUtc, completedAtUtc: result.completedAtUtc };
-      // Some WDP versions return ETL directly; others write it and return no body.
+      record.stopResponseEvidence = { path: result.path, bytes: result.bytes, sha256: result.sha256, contentType: result.contentType };
       if (result.bytes > 0 && !/json|text|html/i.test(result.contentType ?? '')) {
-        record.trace = portalEtlEvidence(result);
+        try { record.trace = portalEtlEvidence(result); }
+        catch (error) {
+          if (error.code !== 'PORTAL_ETL_INVALID') throw error;
+          record.artifactError = { code: error.code, message: error.message };
+        }
       } else if (result.bytes > 0) {
         requireThat(result.bytes <= 8388608, 'PORTAL_RESPONSE_TOO_LARGE', 'Stop response exceeds the JSON limit.');
         const raw = await readFile(result.path, 'utf8');
@@ -143,7 +147,7 @@ export class PortalSession {
     }
     if (!record.trace) {
       try { await this.refreshFiles(record, context); }
-      catch (error) { record.artifactError = { code: error.code, message: error.message }; await this.save(record, 'stopped'); }
+      catch (error) { record.artifactError ??= { code: error.code, message: error.message }; await this.save(record, 'stopped'); }
     }
     return captureView(record);
   }

@@ -452,3 +452,10 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 用户完成配对后，真实公开链路读数成功，但 GeneralProfile 启动被设备 HTTP 错误拒绝，未生成 ETL。记录 TEMP/portal-runtime-zY9YZN，run 78a64c00-5ef4-48d3-804f-31b1d9b59b7f；清理状态读取不满足 Running，未发送 Stop。未将此次失败当作成功采集。
 - 只读提取已安装原始 Flash.vhd 的 MainOS 分区（未修改 VM 镜像），核对微软 Windows/WebManagement/www/default/js/xperf.js，确认 dropdown value 是 Profiles[].FileName，Name 只用于显示。把本机验证上下文改为 /Profiles/0/FileName，对应设备实际 GeneralProfile.wprp；产品仍按显式 JSON Pointer 传值，无硬编码 profile 名。
 - WPR HTTP 失败增加最多 8 KiB 的响应诊断，保存状态/截断标记至 receipt 和即时返回；不记录配对错误体，不自动重试变更。15 项 HTTP/WPR 回归通过，覆盖错误体界限、认证隔离、FileName 原样传值和持久错误一致性。
+
+## 2026-11-25T00:43:19+08:00 — 核实 Win10M Portal WPR 实机产物并补齐停止回执
+
+- 复核 2026-11-24 真实公开 MCP 记录 `TEMP/portal-runtime-nCiJVe/results.json`（run `7fbd8507-4845-401d-ad4e-f81cdf749665`）。`GeneralProfile.wprp` 确实从 Running 回到 Idle，Stop 响应 0 字节。采集前 `/api/wpr/tracefiles` 返回状态对象，导致下载缺少文件基线。只读核对 14393 镜像中的 `xperf.js`、`rest.js` 和微软 REST 参考，三者一致使用文件枚举及按文件名下载。
+- 从已关机的原测试模拟器只读磁盘链取出 Data 分区 `SystemData/Temp/WPRTraces/EtwTrace-2026-11-24-08-01-40.etl`。文件时间及 ETL 头部与 MCP 操作区间吻合。文件保留在 `TEMP/vs2015-mobile-etl-ec2ac7ef492e47faa883c022ecbee49c`，11 MiB，SHA256 `ea16498f799b84242640bd2e1c9221b95f407cb3149c8880333b537528cbed15`。公开 MCP PerfView 回归通过，45,323 个事件、1,023 个 CPU sample、106 个未解码事件、88 条进程生命周期观察，EventsLost=0、BuffersLost=0。离线报告在 `TEMP/v15-guest-events-3BkSor`，未改动客体磁盘或重新启动 VM。Portal 下载仍需设备提供可信文件基线。
+- Stop 回执新增 `stopResponseEvidence`，即使响应为空也保留路径、大小、SHA256 和 Content-Type。无效的直接 ETL 保留 `artifactError` 并继续检查 Idle。确认停止后，在可用文件基线上允许独立下载，避免把文件错误误报为采集仍可能进行。更新工具说明、交互提示及实机文档。
+- 启用已安装 SDK 的完整单元测试 132/132 通过。最终 Portal/PhoneSession 定向测试 51/51 通过，交互脚本语法检查通过。 标准集成测试 17 项通过、25 项按配置跳过，其中 Mobile Portal 实机下载仍未通过。

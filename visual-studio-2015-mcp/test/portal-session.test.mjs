@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -29,7 +30,7 @@ async function fixture(t) {
     if (route === '/api/wpr/trace') {
       state.running = false; state.files.push({ Name: 'guest trace.etl', Id: '1', DateCreated: 1234, FileSize: etl.length });
       if (state.loseStop) return q.socket.destroy();
-      if (state.direct) { r.setHeader('Content-Type', 'application/octet-stream'); return r.end(etl); }
+      if (state.direct) { r.setHeader('Content-Type', 'application/octet-stream'); return r.end(state.truncateDirect ? etl.subarray(0, 512) : etl); }
       return r.end();
     }
     if (route === '/api/wpr/tracefile') {
@@ -111,6 +112,24 @@ test('Portal supports direct ETL stop responses without downloading again', asyn
   assert.equal(f.state.calls.some(([, url]) => url.startsWith('/api/wpr/tracefile?')), false);
 });
 
+test('an invalid direct ETL retains response evidence and permits download after confirmed Idle', async t => {
+  const f = await fixture(t); f.state.direct = true; f.state.truncateDirect = true;
+  const started = await f.session.start(await f.startArgs(), {});
+  const args = { captureId: started.captureId, exclusiveGuest: true };
+  const stopped = await f.session.execute({ action: 'stop', ...args }, {});
+  assert.equal(stopped.state, 'stopped'); assert.equal(stopped.stopStatus.state, 'idle');
+  assert.equal(stopped.operationMayContinue, false); assert.equal(stopped.trace, null);
+  assert.equal(stopped.artifactError.code, 'PORTAL_ETL_INVALID');
+  const response = stopped.stopResponseEvidence, truncated = f.etl.subarray(0, 512);
+  assert.equal(response.bytes, truncated.length);
+  assert.equal(response.sha256, createHash('sha256').update(truncated).digest('hex'));
+  assert.deepEqual(await readFile(response.path), truncated);
+  assert.deepEqual(JSON.parse(await readFile(stopped.receiptPath, 'utf8')).stopResponseEvidence, response);
+  assert.deepEqual((await readArtifact(stopped.runId, stopped.artifactId)).data.result.stopResponseEvidence, response);
+  assert.equal((await f.session.download(args, {})).trace.bytes, f.etl.length);
+  assert.deepEqual(f.session.close(), []);
+});
+
 test('Mobile status-only trace listing preserves unknown baseline while accepting a direct ETL', async t => {
   const f = await fixture(t); f.state.statusInsteadOfFiles = true; f.state.direct = true;
   const started = await f.session.start(await f.startArgs(), {});
@@ -126,6 +145,8 @@ test('missing file enumeration never associates an old file with a stopped captu
   const stopped = await f.session.stop({ captureId: started.captureId, exclusiveGuest: true }, {});
   assert.equal(stopped.state, 'stopped'); assert.equal(stopped.trace, null);
   assert.equal(stopped.artifactError.code, 'PORTAL_TRACE_LIST_UNAVAILABLE');
+  assert.equal(stopped.stopResponseEvidence.bytes, 0);
+  assert.equal((await readFile(stopped.stopResponseEvidence.path)).length, 0);
   f.state.statusInsteadOfFiles = false;
   await assert.rejects(f.session.download({ captureId: started.captureId, filename: 'guest trace.etl' }, {}), { code: 'PORTAL_TRACE_LIST_UNAVAILABLE' });
   assert.equal(f.state.calls.some(([, route]) => route.startsWith('/api/wpr/tracefile?')), false);

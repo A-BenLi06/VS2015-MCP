@@ -7,7 +7,7 @@ WP8.1 已通过 `phone_session_wpr_status/start/stop` 提供 CPU profile 客体�
 | 平台 | 可继续接入的客体通道 | 当前证据与限制 |
 |---|---|---|
 | WP8.1 | Developer Power Tools → CoreCon 服务 → WpWpr → ETL | 本机有 x86/ARM guest helper、服务和 Recorder/Monitor 组件；需连接、部署并启动客体服务 |
-| Win10M 1511+ | Device Portal 进程指标、ETW provider、WPR | 已有绑定 PhoneSession 的读取与采集适配、HTTP 服务回归；真实端点采集待验证 |
+| Win10M 1511+ | Device Portal 进程指标、ETW provider、WPR | 14393 已验证真实读数、WPR 启停和离线 ETL 解析；Portal 文件下载仍待验证 |
 | 两类平台的托管堆 | VS 手机 MemoryProfilerCollectionAgent | 已找到对应架构的客体 agent 与 CoreCon 部署定义；独立命令行编排及结果解析尚未验证 |
 
 WP8.1 SDK 的 `Tools/PowerTools/Support/{x86,ARM}/WpWpr.exe` 是**客体程序**。已从本机微软组件确认 `startWpr` 服务命令及 `-start`、`-stop`、`-status`、`-cancel` 协议，不能在宿主直接执行，也不能把 UI 中出现 Heap profile 视为已采集到托管分配调用栈。新建 CoreCon 服务连接可能部署并启动 guest agent，因此不是纯只读动作。
@@ -29,7 +29,13 @@ SDK 内部协议经过已安装组件检查和 WP8.1 实机验证，适配器用
 
 持久 PhoneSession 通过 XDE PID、启动时间、Hyper-V VM GUID、CoreCon GUID/locale 和 host/guest endpoint pair 固定客体。phone_session_wpr_status 保留 native output 和 fingerprint，phone_session_wpr_start 只接受类型化的 cpu profile，phone_session_wpr_stop 只接受本控制器返回的 captureId。真实验证返回了 4 MiB ETL，EventsLost=0、BuffersLost=0，PerfView 离线 XML 中包含 CPU sample 事件。
 
-这条 profile 的证据覆盖客体采集生命周期和 native/module sample。当前报告仍将 managed GC、managed heap、symbol completeness 和应用热点归因标为未验证。Win10M 的 Portal 适配尚需已启用的实际端点验证。
+这条 profile 的证据覆盖客体采集生命周期和 native/module sample。当前报告仍将 managed GC、managed heap、symbol completeness 和应用热点归因标为未验证。
+
+## 已验证的 Win10M Portal WPR
+
+Mobile 14393 模拟器使用目录中实际返回的 `GeneralProfile.wprp` 成功采集，公开 MCP 确认 Running 到 Idle。Stop 返回零字节，采集前的 `/api/wpr/tracefiles` 返回状态对象，缺少可用于下载的文件基线。镜像自带 Portal 前端与微软 REST 参考均使用该枚举接口，再按枚举结果中的文件名下载。[Device Portal Core API](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/device-portal-api-core)
+
+关机后通过只读检查模拟器磁盘链取出 11 MiB ETL，文件时间和 ETL 头部的采集时间均与该次操作吻合。PerfView 经 MCP 解析出 45,323 个事件、1,023 个 CPU sample 事件、106 个未解码事件、88 条进程生命周期观察，ETL 头部记录 EventsLost=0、BuffersLost=0。此验证使用离线取出的文件，Portal 下载工具仍需要设备提供可信的枚举基线。
 
 ## ETL 事件检查
 

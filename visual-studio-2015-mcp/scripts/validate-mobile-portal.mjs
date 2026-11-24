@@ -30,7 +30,7 @@ try {
     async selectProfile(profiles) {
       console.log('Profile catalog returned by this device:');
       console.log(JSON.stringify(profiles, null, 2));
-      return (await prompt.question('JSON Pointer to the profile name to capture for five seconds: ')).trim();
+      return (await prompt.question('JSON Pointer to the value the device uses for capture (FileName on Mobile 14393): ')).trim();
     },
   });
     console.log(JSON.stringify({ completed: true, ...result }, null, 2));
