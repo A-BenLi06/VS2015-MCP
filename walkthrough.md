@@ -459,3 +459,10 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 从已关机的原测试模拟器只读磁盘链取出 Data 分区 `SystemData/Temp/WPRTraces/EtwTrace-2026-11-24-08-01-40.etl`。文件时间及 ETL 头部与 MCP 操作区间吻合。文件保留在 `TEMP/vs2015-mobile-etl-ec2ac7ef492e47faa883c022ecbee49c`，11 MiB，SHA256 `ea16498f799b84242640bd2e1c9221b95f407cb3149c8880333b537528cbed15`。公开 MCP PerfView 回归通过，45,323 个事件、1,023 个 CPU sample、106 个未解码事件、88 条进程生命周期观察，EventsLost=0、BuffersLost=0。离线报告在 `TEMP/v15-guest-events-3BkSor`，未改动客体磁盘或重新启动 VM。Portal 下载仍需设备提供可信文件基线。
 - Stop 回执新增 `stopResponseEvidence`，即使响应为空也保留路径、大小、SHA256 和 Content-Type。无效的直接 ETL 保留 `artifactError` 并继续检查 Idle。确认停止后，在可用文件基线上允许独立下载，避免把文件错误误报为采集仍可能进行。更新工具说明、交互提示及实机文档。
 - 启用已安装 SDK 的完整单元测试 132/132 通过。最终 Portal/PhoneSession 定向测试 51/51 通过，交互脚本语法检查通过。 标准集成测试 17 项通过、25 项按配置跳过，其中 Mobile Portal 实机下载仍未通过。
+
+## 2026-11-25T00:57:58+08:00 — 解释 Win10M 14393 WPR 文件枚举并打通在线下载
+
+- 只读提取 Win10M 14393 镜像中的 `WebManagement.exe` 并核对请求分发。`/api/wpr/tracefiles` 注册了专用处理函数，先定位临时目录下的 `WPRTraces`，再检查目录属性。目录检查失败时调用 `/api/wpr/status` 使用的状态处理函数。有目录时枚举并返回 `Items`。前端和 REST 参考仍使用原有枚举及下载路由。
+- 采集前 status-only 仍保留 `beforeFiles:null`。仅当其报告 Idle/normal、Stop 后确认 Idle 且枚举可用时，用本机请求区间校验两次 HTTP Date 的时钟偏移，并筛选时间窗内具有 FILETIME 创建时间的非空 ETL。截止依据来自 Stop 后首次 Idle，后续下载重试不扩大时间窗。有采集前文件枚举时继续按差集选择。添加旧文件、超窗文件和时钟偏移回归。
+- 用户在已核对身份的专用模拟器完成非持久配对。公开 MCP 实测 `GeneralProfile.wprp` 采集前为状态对象，Stop 后枚举返回 `C:\Data\SystemData\Temp\WPRTraces\` 下的唯一新文件 `EtwTrace-2026-11-25-00-54-45.etl`，HTTPS 在线下载 11,534,336 字节。SHA256 `a1075ecc33227b6d484cf0947cc68d61bac45a2c77da313cc6286db221f57e1e` 与实际文件、history 一致。run `956e4ec9-8a21-4f7c-9351-609cf7684021`，调用记录 `TEMP/portal-runtime-qhoVLr/results.json`。会话清理无警告，模拟器保持运行。
+- 完整 SDK 单元测试 133/133 通过。对在线下载文件执行公开 MCP PerfView 回归，解析 44,700 个事件、848 个 CPU sample、125 个未解码事件，EventsLost=0、BuffersLost=0。离线分析记录在 `TEMP/v15-guest-events-JDPnid`。

@@ -132,6 +132,7 @@ export class PortalClient {
         if (file) await file.writeFile(chunk); else if (responseType !== 'discard') chunks.push(chunk);
       }
       const result = { bytes, sha256: hash.digest('hex'), contentType: response.headers['content-type'] ?? null,
+        ...(['/api/wpr/status', '/api/wpr/tracefiles'].includes(route) ? { serverDate: response.headers.date ?? null } : {}),
         startedAtUtc, completedAtUtc: new Date().toISOString() };
       if (file) { await file.sync(); await file.close(); file = null; await rename(temporary, destination); temporary = null; return { ...result, path: destination, prefix }; }
       if (responseType === 'discard') return result;

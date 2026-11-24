@@ -194,9 +194,11 @@ taskmanager/app所需的 `appid` 和 `package` 在文档中称为hex64编码。�
 1. `phone_session_portal_wpr_status` 返回 `status`、`profiles` 及两份指纹。status 必须为 `idle`、mode 为 `normal`。
 2. 从实际 profile JSON 中选择供 API 使用的值，以 JSON Pointer 传 `profilePointer`。Win10M 14393 的微软 Portal 前端 xperf.js 将 `Profiles[].FileName` 用作请求值，`Name` 仅作显示文字；该设备返回 GeneralProfile.wprp 时应选择 `/Profiles/0/FileName`，不能选择 `/Profiles/0/Name`。其他设备应依据其实际目录和 API 契约选择，不自动猜字段。传 `observedStatusFingerprint`、`profilesFingerprint`、`operation` 和 `exclusiveGuest:true` 调用 start，保存 `captureId`。
 3. 执行应用操作后调用 stop，提供同一 captureId 和 exclusiveGuest。它只分发一次，并检查设备是否回到 Idle。`stopResponseEvidence` 记录原始响应文件的路径、字节数、SHA256 和 Content-Type，空响应也会记录。直接 ETL 校验失败时，已确认的 Idle 仍会记录为 `stopped`，文件问题见 `artifactError`。
-4. 有 `trace` 时可直接用 PerfView `eventsXml` 检查事件内容。有枚举基线且需要下载时调用 download，多个 `candidateFiles` 中须指定实际 `filename`。下载失败可重试 download，不能重放 stop。文件保存到历史目录并计算 SHA256。
+4. 有 `trace` 时可直接用 PerfView `eventsXml` 检查事件内容。需要下载时调用 download，多个 `candidateFiles` 中须指定实际 `filename`。下载失败可重试 download，不能重放 stop。文件保存到历史目录并计算 SHA256。
 
-实际 Mobile 14393 返回 `State:"Idle"/"Running"`、`SessionType:"normal"/"boot"`，与 REST 参考示例的字段安排相反。解析器支持这两种完整组合，用 responseFormat 标记来源；未知、缺失或冲突字段保持 unknown。这个设备的 tracefiles 接口还可能仅返回 WPR 状态，工具将其记录为 `beforeFileListing.available:false` 和 `beforeFiles:null`，保留 Stop 直接返回 ETL 的路径。没有直接 ETL 且缺少文件枚举基线时，返回 `PORTAL_TRACE_LIST_UNAVAILABLE`，不推断旧文件属于本次采集。
+实际 Mobile 14393 返回 `State:"Idle"/"Running"`、`SessionType:"normal"/"boot"`，与 REST 参考示例的字段安排相反。解析器支持两种完整组合，用 `responseFormat` 标记来源。未知、缺失或冲突字段保持 unknown。
+
+Mobile 14393 的 `tracefiles` 在 WPR 输出目录检查失败时返回状态对象。工具记录 `beforeFileListing.available:false` 和 `beforeFiles:null`。若采集前该响应为 Idle/normal，Stop 后确认 Idle 且枚举返回 `Items`，则用两次响应的 HTTP `Date`、本机请求区间和文件的 `DateCreated`（Windows FILETIME）确认 `fileCreationWindow` 内的候选 ETL。时间窗以 Stop 后首次确认的 Idle 为截止依据，下载重试复用同一时间窗。设备时间不一致或停止后仍缺少枚举时返回 `PORTAL_TRACE_LIST_UNAVAILABLE`。有采集前枚举时按前后差集选择文件。
 
 WDP 没有远端所有权 token，也不返回采集实例的可靠唯一身份。工具的本地 captureId、VM 校验和前后文件列表依赖持续独占该客体的前提，无法排除外部工具在两次观察之间替换同类采集。不确定响应保留 receipt 和 `operationMayContinue`；关闭会话报告可能继续的采集，不能用新连接接管旧 captureId。Stop/download 可在 IDE 已退出时执行，仍检查 guest 身份。
 
@@ -236,4 +238,4 @@ XAML fixture 可通过 `test/fixtures/New-Wp81Fixture.ps1 -XamlAutomation` 创�
 
 2026-11-20（UTC+08:00）本机专用 Win10M Portal 端口无响应，未完成上述真实端点回归。模拟 HTTP 生命周期、认证/CSRF、重定向拒绝、身份变化、超时不重放和下载恢复测试已通过；不以此宣称 Win10M WPR 实机成功。
 
-2026-11-23（UTC+08:00）真实 Mobile 14393 通过公开 MCP 完成非持久配对和 OS 绑定，读取了 44 个进程、98 个应用包及 CPU/内存等系统指标。2026-11-24 使用 `GeneralProfile.wprp` 完成 Running 到 Idle 的采集，Stop 返回空响应，文件枚举返回状态 JSON。2026-11-25 从关机模拟器的只读磁盘链取出本次 11 MiB ETL，并通过 `vs2015_perfview_report` 解析。该设备的 Portal 下载仍待验证。详见[手机客体性能接入现状](mobile-performance.md#已验证的-win10m-portal-wpr)。
+2026-11-25（UTC+08:00）真实 Mobile 14393 已通过公开 MCP 完成非持久配对、读数、`GeneralProfile.wprp` 采集和在线下载。采集前文件枚举返回状态对象，Stop 后枚举返回 `Items`，下载了时间窗内唯一的 11 MiB ETL。实测已校验字节数、SHA256、history 一致性及会话清理。详见[手机客体性能接入现状](mobile-performance.md#已验证的-win10m-portal-wpr)。

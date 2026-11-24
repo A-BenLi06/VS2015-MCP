@@ -7,7 +7,7 @@ WP8.1 已通过 `phone_session_wpr_status/start/stop` 提供 CPU profile 客体�
 | 平台 | 可继续接入的客体通道 | 当前证据与限制 |
 |---|---|---|
 | WP8.1 | Developer Power Tools → CoreCon 服务 → WpWpr → ETL | 本机有 x86/ARM guest helper、服务和 Recorder/Monitor 组件；需连接、部署并启动客体服务 |
-| Win10M 1511+ | Device Portal 进程指标、ETW provider、WPR | 14393 已验证真实读数、WPR 启停和离线 ETL 解析；Portal 文件下载仍待验证 |
+| Win10M 1511+ | Device Portal 进程指标、ETW provider、WPR | 14393 已验证真实读数、WPR 启停、Portal 在线下载和 ETL 解析 |
 | 两类平台的托管堆 | VS 手机 MemoryProfilerCollectionAgent | 已找到对应架构的客体 agent 与 CoreCon 部署定义；独立命令行编排及结果解析尚未验证 |
 
 WP8.1 SDK 的 `Tools/PowerTools/Support/{x86,ARM}/WpWpr.exe` 是**客体程序**。已从本机微软组件确认 `startWpr` 服务命令及 `-start`、`-stop`、`-status`、`-cancel` 协议，不能在宿主直接执行，也不能把 UI 中出现 Heap profile 视为已采集到托管分配调用栈。新建 CoreCon 服务连接可能部署并启动 guest agent，因此不是纯只读动作。
@@ -33,9 +33,9 @@ SDK 内部协议经过已安装组件检查和 WP8.1 实机验证，适配器用
 
 ## 已验证的 Win10M Portal WPR
 
-Mobile 14393 模拟器使用目录中实际返回的 `GeneralProfile.wprp` 成功采集，公开 MCP 确认 Running 到 Idle。Stop 返回零字节，采集前的 `/api/wpr/tracefiles` 返回状态对象，缺少可用于下载的文件基线。镜像自带 Portal 前端与微软 REST 参考均使用该枚举接口，再按枚举结果中的文件名下载。[Device Portal Core API](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/device-portal-api-core)
+Mobile 14393 的 `WebManagement.exe` 在 `/api/wpr/tracefiles` 中检查进程临时目录下的 `WPRTraces`。目录检查失败时调用与 `/api/wpr/status` 相同的状态处理函数。Stop 写出 ETL 后，实测该接口返回 `Items`，其中含文件名、字节数和 FILETIME 创建时间。镜像自带 Portal 前端与微软 REST 参考均使用此枚举接口，再按结果中的文件名下载。[Device Portal Core API](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/device-portal-api-core)
 
-关机后通过只读检查模拟器磁盘链取出 11 MiB ETL，文件时间和 ETL 头部的采集时间均与该次操作吻合。PerfView 经 MCP 解析出 45,323 个事件、1,023 个 CPU sample 事件、106 个未解码事件、88 条进程生命周期观察，ETL 头部记录 EventsLost=0、BuffersLost=0。此验证使用离线取出的文件，Portal 下载工具仍需要设备提供可信的枚举基线。
+2026-11-25（UTC+08:00）实测使用 `GeneralProfile.wprp` 采集，Stop 返回零字节并确认 Idle。采集前无枚举，Stop 后工具按设备时间和 FILETIME 选出唯一候选，并经 HTTPS 下载 11 MiB ETL。公开 MCP 回归核对了下载大小、SHA256、history 一致性和会话清理。PerfView 解析出 44,700 个事件和 848 个 CPU sample 事件，ETL 头部记录 EventsLost=0、BuffersLost=0。
 
 ## ETL 事件检查
 

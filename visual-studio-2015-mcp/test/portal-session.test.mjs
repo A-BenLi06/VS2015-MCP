@@ -8,6 +8,8 @@ import os from 'node:os';
 import { PortalSession } from '../src/portal-session.mjs';
 import { readArtifact } from '../src/history.mjs';
 
+const fileTime = milliseconds => Number(BigInt(milliseconds) * 10000n + 116444736000000000n);
+
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'portal-session-'));
   const previous = process.env.VS2015_MCP_HISTORY; process.env.VS2015_MCP_HISTORY = root;
@@ -16,6 +18,7 @@ async function fixture(t) {
   const server = http.createServer((q, r) => {
     const url = new URL(q.url, 'http://fixture'); const route = url.pathname;
     state.calls.push([q.method, q.url]); r.setHeader('Content-Type', 'application/json');
+    r.setHeader('Date', new Date(Date.now() + (state.clockOffsetMs ?? 0)).toUTCString());
     const json = v => r.end(JSON.stringify(v));
     if (route === '/api/os/info') return json(state.os);
     if (route === '/api/wpr/status') return json({ State: state.unknown ? '?' : state.running ? 'Running' : 'Idle', SessionType: 'normal' });
@@ -28,7 +31,10 @@ async function fixture(t) {
       return json({ State: 'Running', SessionType: 'normal' });
     }
     if (route === '/api/wpr/trace') {
-      state.running = false; state.files.push({ Name: 'guest trace.etl', Id: '1', DateCreated: 1234, FileSize: etl.length });
+      state.running = false;
+      const DateCreated = state.useCreationTime ? fileTime(Date.now()) : 1234;
+      state.files.push({ Name: 'guest trace.etl', Id: '1', DateCreated, FileSize: etl.length });
+      if (state.listAfterStop) state.statusInsteadOfFiles = false;
       if (state.loseStop) return q.socket.destroy();
       if (state.direct) { r.setHeader('Content-Type', 'application/octet-stream'); return r.end(state.truncateDirect ? etl.subarray(0, 512) : etl); }
       return r.end();
@@ -142,6 +148,7 @@ test('Mobile status-only trace listing preserves unknown baseline while acceptin
 test('missing file enumeration never associates an old file with a stopped capture', async t => {
   const f = await fixture(t); f.state.statusInsteadOfFiles = true;
   const started = await f.session.start(await f.startArgs(), {});
+  f.state.clockOffsetMs = 20000;
   const stopped = await f.session.stop({ captureId: started.captureId, exclusiveGuest: true }, {});
   assert.equal(stopped.state, 'stopped'); assert.equal(stopped.trace, null);
   assert.equal(stopped.artifactError.code, 'PORTAL_TRACE_LIST_UNAVAILABLE');
@@ -150,6 +157,25 @@ test('missing file enumeration never associates an old file with a stopped captu
   f.state.statusInsteadOfFiles = false;
   await assert.rejects(f.session.download({ captureId: started.captureId, filename: 'guest trace.etl' }, {}), { code: 'PORTAL_TRACE_LIST_UNAVAILABLE' });
   assert.equal(f.state.calls.some(([, route]) => route.startsWith('/api/wpr/tracefile?')), false);
+});
+
+test('Mobile can download the first ETL by creation time after the listing becomes available', async t => {
+  const f = await fixture(t);
+  Object.assign(f.state, { statusInsteadOfFiles: true, listAfterStop: true, useCreationTime: true });
+  f.state.files.push({ Name: 'old.etl', DateCreated: fileTime(0), FileSize: f.etl.length });
+  const started = await f.session.start(await f.startArgs(), {});
+  const args = { captureId: started.captureId, exclusiveGuest: true };
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  const stopped = await f.session.stop(args, {});
+  assert.equal(stopped.beforeFiles, null);
+  assert.ok(stopped.fileCreationWindow);
+  assert.deepEqual(stopped.candidateFiles.map(item => item.Name), ['guest trace.etl']);
+  const future = fileTime(Date.parse(stopped.fileCreationWindow.latestUtc) + 3000);
+  f.state.files.push({ Name: 'later.etl', DateCreated: future, FileSize: f.etl.length });
+  const downloaded = await f.session.download(args, {});
+  assert.equal(downloaded.selectedFile.Name, 'guest trace.etl');
+  assert.deepEqual(downloaded.fileCreationWindow, stopped.fileCreationWindow);
+  assert.deepEqual(await readFile(downloaded.trace.path), f.etl);
 });
 
 test('WPR failure receipts preserve HTTP diagnostics and keep the observed profile value literal', async t => {

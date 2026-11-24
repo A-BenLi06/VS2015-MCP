@@ -26,6 +26,20 @@ function traceItems(raw) {
 }
 const fileKey = item => portalFingerprint({ Name: item.Name, Id: item.Id ?? null, DateCreated: item.DateCreated ?? null, FileSize: item.FileSize });
 const captureView = record => structuredClone(record);
+const responseClock = ({ serverDate, startedAtUtc, completedAtUtc }) => ({ serverDate, startedAtUtc, completedAtUtc });
+
+function serverClock(observation) {
+  const server = Date.parse(observation.serverDate), started = Date.parse(observation.startedAtUtc), completed = Date.parse(observation.completedAtUtc);
+  if (!Number.isFinite(server) || new Date(server).toUTCString() !== observation.serverDate || !(started <= completed)) return null;
+  // HTTP Date has one-second resolution. Bound the guest/host offset using the request interval.
+  return { server, minOffset: server - completed, maxOffset: server + 999 - started };
+}
+
+function fileTimeMilliseconds(value) {
+  if (!Number.isInteger(value) || value <= 0) return NaN;
+  // A JSON number loses some 100 ns precision at modern FILETIME values.
+  return Number((BigInt(value) - 116444736000000000n) / 10000n);
+}
 
 // The parent PhoneSession queue owns serialization and checks VM/CoreCon identity.
 // WDP has no remote ownership token: explicit exclusiveGuest is still required.
@@ -67,16 +81,16 @@ export class PortalSession {
     return { status, profiles, profilesFingerprint: portalFingerprint(profiles), activeCapture: this.activeId ? captureView(this.captures.get(this.activeId)) : null };
   }
   async traceListing(context) {
-    let raw;
-    try { raw = (await this.client.request(routes.traceFiles, context)).data; }
+    let response;
+    try { response = await this.client.request(routes.traceFiles, context); }
     catch (error) {
       if (error.code === 'PORTAL_UNSUPPORTED') return { available: false, reason: 'unsupported', httpStatus: error.details?.httpStatus };
       throw error;
     }
-    // Mobile 14393 can return its WPR status here instead of a file listing.
-    // This is missing enumeration support, not evidence of an empty directory.
+    const raw = response.data;
+    // Mobile 14393 returns WPR status when it cannot find its output directory.
     if (raw && Object.keys(raw).length === 2 && statusOf(raw).state !== 'unknown')
-      return { available: false, reason: 'status-response', raw };
+      return { available: false, reason: 'status-response', raw, clock: responseClock(response) };
     return { available: true, items: traceItems(raw), raw };
   }
   async start(input, context) {
@@ -135,8 +149,10 @@ export class PortalSession {
         try { record.stopResponse = JSON.parse(raw); } catch { throw new PortalError('PORTAL_RESPONSE_INVALID', 'Stop returned an unexpected body.'); }
         requireThat(record.stopResponse?.ErrorCode === undefined || record.stopResponse.ErrorCode === 0, 'PORTAL_STOP_UNCONFIRMED', 'Stop returned a native error.');
       }
-      record.stopStatus = statusOf((await this.client.request('/api/wpr/status', context)).data);
+      const statusResponse = await this.client.request('/api/wpr/status', context);
+      record.stopStatus = statusOf(statusResponse.data);
       requireThat(record.stopStatus.state === 'idle', 'PORTAL_STOP_UNCONFIRMED', 'WPR did not confirm Idle after Stop.');
+      record.stopClock = responseClock(statusResponse);
       record.operationMayContinue = false;
       await this.save(record, record.trace ? 'stopped-artifact-verified' : 'stopped'); this.activeId = null;
     } catch (error) {
@@ -152,12 +168,26 @@ export class PortalSession {
     return captureView(record);
   }
   async refreshFiles(record, context) {
-    requireThat(record.beforeFileListing.available, 'PORTAL_TRACE_LIST_UNAVAILABLE', 'This device did not enumerate trace files before capture; new-file association cannot be established. Check the retained stop response.');
+    const before = record.beforeFileListing;
+    const baselineStatus = before.reason === 'status-response' ? statusOf(before.raw) : null;
+    requireThat(before.available || (baselineStatus?.state === 'idle' && baselineStatus.mode === 'normal'),
+      'PORTAL_TRACE_LIST_UNAVAILABLE', 'This device did not enumerate trace files or report Idle/normal before capture.');
     const listing = await this.traceListing(context);
-    requireThat(listing.available, 'PORTAL_TRACE_LIST_UNAVAILABLE', 'This device no longer enumerates trace files. Check the retained stop response.');
-    const items = listing.items;
-    const before = new Set(record.beforeFiles.map(fileKey));
-    record.candidateFiles = items.filter(item => !before.has(fileKey(item)));
+    requireThat(listing.available, 'PORTAL_TRACE_LIST_UNAVAILABLE', 'The device did not enumerate trace files after Stop. Check the retained stop response.');
+    if (before.available) {
+      const previous = new Set(record.beforeFiles.map(fileKey));
+      record.candidateFiles = listing.items.filter(item => !previous.has(fileKey(item)));
+    } else {
+      const first = serverClock(before.clock), last = serverClock(record.stopClock);
+      requireThat(first && last && first.server < last.server && Math.max(first.minOffset, last.minOffset) <= Math.min(first.maxOffset, last.maxOffset),
+        'PORTAL_TRACE_LIST_UNAVAILABLE', 'The device clock could not establish a creation window without a file listing baseline.');
+      const earliest = first.server + 1000, latest = last.server + 999;
+      record.fileCreationWindow = { earliestUtc: new Date(earliest).toISOString(), latestUtc: new Date(latest).toISOString() };
+      record.candidateFiles = listing.items.filter(item => {
+        const created = fileTimeMilliseconds(item.DateCreated);
+        return /\.etl$/iu.test(item.Name) && item.FileSize > 0 && created >= earliest && created <= latest;
+      });
+    }
     await this.save(record, record.state);
   }
   async download(input, context) {
