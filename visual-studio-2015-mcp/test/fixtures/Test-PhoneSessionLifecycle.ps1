@@ -1,9 +1,12 @@
 param([string]$ScriptsDirectory=$PSScriptRoot)
 $ErrorActionPreference='Stop'
+[Console]::Error.WriteLine('Fixture phase: importing PhoneSessions.')
 $module=Import-Module (Join-Path $ScriptsDirectory 'PhoneSessions.psm1') -Force -PassThru -DisableNameChecking
 $core=Get-Module PhoneCore -All | Select-Object -First 1
 Add-Type -AssemblyName System.Windows.Forms
+[Console]::Error.WriteLine('Fixture phase: compiling keyboard enum stub.')
 Add-Type -TypeDefinition 'namespace Microsoft.Xde.Common { public enum KeyboardKeyOption { Type, Press, Release } }'
+[Console]::Error.WriteLine('Fixture phase: exercising fake phone session and key cleanup.')
 & $core {
     $script:Log=New-Object 'Collections.Generic.List[string]'
     $script:ClientCount=0;$script:InputCount=0;$script:VmId='00000000-0000-0000-0000-000000000001'
