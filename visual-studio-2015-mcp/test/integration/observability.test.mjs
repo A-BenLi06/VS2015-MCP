@@ -30,11 +30,17 @@ test('MCP records real action times and compares imported localized reports', as
     const reportA = path.join(directory, 'before.csv'), reportB = path.join(directory, 'after.csv');
     await writeFile(reportA, '函数,样本\nA,10\n'); await writeFile(reportB, '函数,样本\nA,30\nB,2\n');
     const mapping = { symbolColumn: '函数', valueColumn: '样本', metric: 'cpu', unit: 'samples', valueSemantics: 'total', attribution: 'exclusive', collector: 'fixture-v1', scope: 'target process', complete: true };
-    const aa = await call('vs2015_hotspots_import', { ...mapping, runId: a.id, path: reportA, durationMs: 1000 });
-    const bb = await call('vs2015_hotspots_import', { ...mapping, runId: b.id, path: reportB, durationMs: 2000 });
-    const comparison = await call('vs2015_hotspots_compare', { baselineRunId: a.id, baselineArtifactId: aa.artifactId, candidateRunId: b.id, candidateArtifactId: bb.artifactId });
+    const aa = await call('vs2015_hotspots_import', { ...mapping, runId: a.id, path: reportA, durationMs: 1000, workUnits: 1 });
+    const bb = await call('vs2015_hotspots_import', { ...mapping, runId: b.id, path: reportB, durationMs: 2000, workUnits: 3 });
+    const pair = { baselineRunId: a.id, baselineArtifactId: aa.artifactId, candidateRunId: b.id, candidateArtifactId: bb.artifactId };
+    const comparison = await call('vs2015_hotspots_compare', pair);
     assert.equal(comparison.comparable, true);
     assert.equal(comparison.rows.find(row => row.symbol === 'A').delta, 5);
+    assert.equal(comparison.unit, 'samples/s');
+    assert.equal(comparison.sourceUnit, 'samples');
+    const perOperation = await call('vs2015_hotspots_compare', { ...pair, normalization: 'perOperation' });
+    assert.equal(perOperation.unit, 'samples/operation');
+    assert.equal(perOperation.rows.find(row => row.symbol === 'A').delta, 0);
     assert.equal((await call('vs2015_history_list', { operation: 'load' })).runs.length, 2);
     if (process.platform === 'win32') {
       const processes = await call('vs2015_processes', { nameContains: 'node', limit: 1000 });

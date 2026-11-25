@@ -176,7 +176,9 @@ export function compareHotspots(baselineRun, candidateRun, baseline, candidate, 
       status: before == null || after == null ? 'unknown-missing-row' : !a ? 'added' : !b ? 'removed' : 'matched' });
   }
   rows.sort((a, b) => (b.delta == null ? -1 : Math.abs(b.delta)) - (a.delta == null ? -1 : Math.abs(a.delta)));
-  return { comparable: true, normalization, metric: baseline.metric, unit: baseline.unit, attribution: baseline.attribution,
+  const sourceUnit = baseline.unit;
+  const unit = normalization === 'perSecond' ? `${sourceUnit}/s` : normalization === 'perOperation' ? `${sourceUnit}/operation` : sourceUnit;
+  return { comparable: true, normalization, metric: baseline.metric, sourceUnit, unit, attribution: baseline.attribution,
     totalSymbols: rows.length, rows: rows.slice(0, limit),
     warnings: [baseline.complete && candidate.complete ? null : 'Incomplete reports: missing rows are unknown, not zero.',
       baseline.attribution === 'inclusive' ? 'Inclusive values overlap across callers; do not sum them.' : null,
