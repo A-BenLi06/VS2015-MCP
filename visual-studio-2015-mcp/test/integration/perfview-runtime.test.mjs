@@ -9,6 +9,49 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { parseCsv } from '../../src/history.mjs';
 
 const enabled = process.platform === 'win32' && process.env.VS2015_TEST_PERFVIEW && process.env.VS2015_TEST_ETL && process.env.VS2015_TEST_TRACE_PROCESS;
+const appCpuContext = process.env.VS2015_TEST_APP_CPU_CONTEXT;
+test('public appCpu reproduces process attribution and native hotspots from the Mobile ETL', {
+  skip: process.platform !== 'win32' || !process.env.VS2015_TEST_PERFVIEW || !appCpuContext, timeout: 300000,
+}, async t => {
+  const fixture = JSON.parse(await readFile(appCpuContext, 'utf8'));
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'v15-appcpu-'));
+  const client = new Client({ name: 'app-cpu-runtime', version: '1' });
+  await client.connect(new StdioClientTransport({ command: process.execPath,
+    args: [fileURLToPath(new URL('../../src/server.mjs', import.meta.url))], env: { ...process.env, VS2015_MCP_HISTORY: directory } }));
+  const options = { analysis: 'appCpu', packageFullName: fixture.packageFullName, inputPath: fixture.inputPath,
+    processId: fixture.processId, perfViewPath: process.env.VS2015_TEST_PERFVIEW, dryRun: false, timeoutMs: 90000 };
+  const call = args => client.callTool({ name: 'vs2015_perfview_report', arguments: args }, { timeout: 110000, signal: t.signal });
+  try {
+    const response = await call({ ...options, pdbPaths: [fixture.pdbPath] });
+    assert.equal(response.isError, false, JSON.stringify(response.structuredContent));
+    const result = response.structuredContent, cpu = result.appCpu;
+    assert.equal(result.traceSha256, fixture.sha256);
+    assert.equal(cpu.process.processId, fixture.processId);
+    assert.equal(cpu.process.packageFullName, fixture.packageFullName);
+    assert.equal(cpu.process.applicationId, fixture.applicationId);
+    assert.equal(cpu.process.identityEvent, 'Process/Start');
+    assert.equal(cpu.attributedSamples, 23996);
+    assert.equal(cpu.stackSamples, 14167);
+    assert.equal(cpu.missingStackSamples, 9829);
+    assert.equal(cpu.unresolvedSamples, 459);
+    assert.equal(cpu.pdbs[0].matched, true);
+    assert.match(cpu.hotspots[0].function, /!FixtureHotMix$/);
+    assert.equal(cpu.hotspots[0].samples, 23536);
+    assert.deepEqual(cpu.nativeStacks[0].framesLeafToRoot.map(frame => frame.split('!').at(-1)), ['FixtureHotMix', 'FixtureBatchLoop', 'RunFixtureBatch']);
+    assert.equal(cpu.nativeStacks[0].samples, 13825);
+    const artifact = await client.callTool({ name: 'vs2015_history_artifact', arguments: { runId: result.runId, artifactId: result.artifactId } });
+    assert.equal(artifact.isError, false);
+    assert.deepEqual(artifact.structuredContent.data.result.appCpu, cpu);
+    const unsymbolized = await call({ ...options, processIndex: cpu.process.processIndex });
+    assert.equal(unsymbolized.isError, false);
+    assert.equal(unsymbolized.structuredContent.appCpu.unresolvedSamples, 23996);
+    assert.equal(unsymbolized.structuredContent.appCpu.stackSamples, 14167);
+    const unknown = await call({ ...options, processIndex: 2147483647 });
+    assert.equal(unknown.isError, true);
+    assert.equal(unknown.structuredContent.error.code, 'ETL_PROCESS_NOT_FOUND');
+    t.diagnostic(`Mobile appCpu evidence: ${result.artifactPath}`);
+  } finally { await client.close(); }
+});
 test('real guest ETL event export reports content, raw loss headers and lifetime observations through MCP', {
   skip: process.platform !== 'win32' || !process.env.VS2015_TEST_PERFVIEW || !process.env.VS2015_TEST_GUEST_ETL, timeout: 300000,
 }, async t => {

@@ -57,7 +57,11 @@ Logger 在首次使用时通过已安装的 Framework `csc.exe` 编译，引用�
 {"analysis":"cpuStacks","inputPath":"D:/traces/trace.etl","processName":"MyApp","perfViewPath":"D:/tools/PerfView.exe","dryRun":false}
 ```
 
-`cpuStacks` 导出 PerfView XML stack source；`cpuCsv` 导出 CSV；`gcStats` 导出 GC HTML 和各进程 CSV。原始 ETL 先复制到历史目录；ZIP 输入先安全提取选中的 ETL，多 ETL 时传 `entryName`，`maxTraceBytes` 限制展开字节数。这样避免 PerfView 把 ZIP 的报告写到共享缓存。使用 NoGui/NoView 执行，原始目录不写报告。为兼容旧 Framework 的 MAX_PATH，内部使用短文件名，过长的历史目录会明确报错，应选择较短的 `VS2015_MCP_HISTORY`。
+`cpuStacks` 导出 PerfView XML stack source，`cpuCsv` 导出 CSV，`gcStats` 导出 GC HTML 和各进程 CSV。原始 ETL 先复制到历史目录。ZIP 输入先提取选中的 ETL，多 ETL 时传 `entryName`，`maxTraceBytes` 限制展开字节数。为兼容旧 Framework 的 MAX_PATH，过长的历史目录会明确报错，可选择较短的 `VS2015_MCP_HISTORY`。
+
+`analysis:"appCpu"` 使用 PerfView 附带的 TraceEvent 和 x64 .NET Framework 4.8，按 ETL 进程事件的 `packageFullName` 选择应用。可传 `processId` 缩小范围。若仍有多个进程实例，`ETL_PROCESS_AMBIGUOUS` 返回候选及 `processIndex`，用该索引选定当前 ETL 内的实例。结果包含输入 ETL SHA-256、进程证据、归属样本数、缺栈数和覆盖率。
+
+`pdbPaths` 接受本地原生 PDB。仅 GUID 和 age 与进程所加载模块一致时才解出原生热点。热点数按采样指令地址统计，即使该样本缺少调用栈也可解析函数。披露 `unresolvedSamples`，并返回从采样帧开始、连续可解析的原生栈。未提供 PDB 时仍可做进程归因和栈覆盖统计。计数的单位为 CPU 采样事件。
 
 CPU 内置导出选择最后一个同名实例，并非 PID＋启动时间筛选；GCStats 包含全部 CLR 进程，PID 重用也可能影响其输出命名。必须核对实际进程范围。
 

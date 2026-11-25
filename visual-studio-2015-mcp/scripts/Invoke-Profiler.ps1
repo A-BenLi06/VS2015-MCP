@@ -239,7 +239,7 @@ try {
         'offlineReport' {
             $tool=Resolve-Tool $request 'perfview'
             $analysis=Read-Text $request 'analysis'
-            if($analysis -notin @('cpuStacks','cpuCsv','gcStats','eventsXml')){Fail 'INVALID_REQUEST' 'analysis must be cpuStacks, cpuCsv, gcStats or eventsXml.'}
+            if($analysis -notin @('cpuStacks','cpuCsv','gcStats','eventsXml','appCpu')){Fail 'INVALID_REQUEST' 'Unknown offline analysis mode.'}
             $inputPath=Resolve-FullPath (Read-Text $request 'inputPath')
             if(-not (Test-Path -LiteralPath $inputPath -PathType Leaf) -or $inputPath -notmatch '(?i)\.etl(?:\.zip)?$'){Fail 'INVALID_REQUEST' 'inputPath must be an existing .etl or .etl.zip file.'}
             $processName=Read-Text $request 'processName'
@@ -268,15 +268,49 @@ try {
                 'cpuCsv' {$args.Add('SaveCPUStacksAsCsv');$args.Add($inputCopy);$args.Add($processName);$args.Add('10');$args.Add('LastProcess');$pattern='*.perfView.csv';$notes.Add('PerfView CSV replaces commas in names, its Inc column is count rather than InclusiveMetric, and numeric formatting is culture-dependent; retain raw CSV and do not infer milliseconds from Inc.')}
                 'gcStats' {$args.Add('GCStats');$args.Add($inputCopy);$pattern='*.gcStats.html';$notes.Add('GCStats contains all CLR processes, does not filter by processId/processName, and PID reuse may overwrite a per-PID CSV.')}
                 'eventsXml' {$args.Add('DumpEventsAsXml');$args.Add($inputCopy);$args.Add((Join-Path $runDirectory 'events.xml'));$pattern='events.xml';$notes.Add('Full trace events are exported without a process filter. The bounded XML summary does not prove app attribution or symbol completeness.')}
+                'appCpu' {
+                    $package = Read-Text $request 'packageFullName'
+                    if ([string]::IsNullOrWhiteSpace($package)) { Fail 'INVALID_REQUEST' 'appCpu requires packageFullName.' }
+                    $pdbPaths = Get-Value $request 'pdbPaths' @()
+                    if ($pdbPaths.Count -gt 16) { Fail 'INVALID_REQUEST' 'Supply at most 16 native PDBs.' }
+                    $analyzerDirectory = Join-Path $runDirectory 'analyzer'
+                    $appReport = Join-Path $runDirectory 'app-cpu.json'
+                    $args.Clear()
+                    foreach ($argument in @($inputCopy, $appReport, $package, (Read-Int $request 'processId' 0 0 ([int]::MaxValue)),
+                            (Read-Int $request 'processIndex' -1 -1 ([int]::MaxValue)), (Read-Int $request 'top' 20 1 100))) {
+                        $args.Add([string]$argument)
+                    }
+                    foreach ($pdbPath in $pdbPaths) {
+                        $pdb = Resolve-FullPath $pdbPath
+                        if ([IO.Path]::GetExtension($pdb) -ine '.pdb' -or -not [IO.File]::Exists($pdb)) { Fail 'INVALID_REQUEST' 'Each pdbPaths entry must reference an existing native .pdb file.' }
+                        $args.Add($pdb)
+                    }
+                    $pattern = 'app-cpu.json'
+                    $notes.Add('Names use explicit native PDBs matched by GUID and age. Native stacks contain consecutive resolved frames from the sample address; unresolved frames end the displayed sequence.')
+                }
             }
             if($analysis -in @('cpuStacks','cpuCsv')){$notes.Add('CPU selection uses the last matching process name, not PID plus start time. Same-name instances require explicit review before attributing results to a selected live process.')}
             $plan=New-Plan $tool @($args) $timeout
+            if ($analysis -eq 'appCpu') { $plan.executable = Join-Path $analyzerDirectory 'AppCpuAnalyzer.exe' }
             $result=[ordered]@{operation=$operation;dryRun=$dryRun;analysis=$analysis;inputPath=$inputPath;inputCopy=$inputCopy;extraction=$extraction;outputDirectory=$runDirectory;plan=$plan;notes=@($notes);collectorVersion=$tool.version}
             if(-not $dryRun){
                 $null=[IO.Directory]::CreateDirectory($runDirectory)
                 if($null -eq $extraction){[IO.File]::Copy($inputPath,$inputCopy,$false)}
                 if((Get-Item -LiteralPath $inputCopy).Length -gt $maxTraceBytes){Fail 'TRACE_TOO_LARGE' 'Copied ETL exceeds maxTraceBytes.'}
-                $result['execution']=Invoke-Plan $plan
+                if ($analysis -eq 'appCpu') {
+                    $result['traceSha256'] = (Get-FileHash -LiteralPath $inputCopy -Algorithm SHA256).Hash.ToLowerInvariant()
+                    Import-Module (Join-Path $PSScriptRoot 'AppCpuAnalyzer.psm1')
+                    try {
+                        Build-AppCpuAnalyzer -PerfView $tool.path -Directory $analyzerDirectory -TimeoutMs $timeout
+                        $result['execution'] = Invoke-Plan $plan
+                    } finally {
+                        if ([IO.Directory]::Exists($analyzerDirectory) -and
+                            [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($analyzerDirectory)) -eq [IO.Path]::GetFullPath($runDirectory)) {
+                            try { [IO.Directory]::Delete($analyzerDirectory, $true) }
+                            catch { $result['analyzerCleanupWarning'] = $_.Exception.Message }
+                        }
+                    }
+                } else { $result['execution'] = Invoke-Plan $plan }
                 $result['exitCode']=$result.execution.exitCode;$result['timedOut']=$result.execution.timedOut
                 $result['files']=@(Get-ChildItem -LiteralPath $runDirectory -Recurse -File | Select-Object @{n='path';e={$_.FullName}},Length)
                 $outputs=@(Get-ChildItem -LiteralPath $runDirectory -Recurse -File -Filter $pattern | Where-Object {$_.Length -gt 0})
@@ -285,6 +319,11 @@ try {
                 if($analysis -eq 'eventsXml' -and $outputs.Count -eq 1 -and $result.execution.exitCode -eq 0 -and -not $result.execution.timedOut){
                     try{$result['eventSummary']=Read-TraceEventSummary -Path $outputs[0].FullName}
                     catch{$result['error']=@{code='EVENT_SUMMARY_FAILED';message=$_.Exception.Message};$result['eventSummary']=@{eventContentValidated=$false}}
+                }
+                if ($analysis -eq 'appCpu' -and $outputs.Count -eq 1 -and $result.execution.exitCode -eq 0 -and -not $result.execution.timedOut) {
+                    $summary = ([IO.File]::ReadAllText($appReport) | ConvertFrom-Json -AsHashtable)
+                    if ($summary.ContainsKey('error')) { $result['error'] = $summary.error }
+                    else { $result['appCpu'] = $summary }
                 }
             }
         }
