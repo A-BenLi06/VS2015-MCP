@@ -472,3 +472,10 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 在 TEMP 独立构建 VS2015 UWP x86 测试应用 `McpCpu14393`。后台负载运行约 24 秒，原生 DLL 保留 `RunFixtureBatch → FixtureBatchLoop → FixtureHotMix` 三层调用。核对包内 DLL 和编译产物 SHA256 一致，PE 与本地 PDB 的 GUID/age 相符。
 - 在专用 Mobile 14393 模拟器通过 VS2015 IDE MCP 部署成功，确认包 `f741b159-f53e-4c1e-b0d2-72943a28af6d_1.0.0.0_x86__xk8sdgvb08t6r`，未启动应用。部署记录及匿名本地 WPR 执行入口保留在 `TEMP/mcp-cpu14393-c8a2f5ad`。分析入口已用先前 ETL 核对进程实例和原始栈读取，并用此次 DLL 的本地 PDB 验证符号读取。前次 ETL 仅为分析器校准。
 - 当前模拟器重启后 80/443 未响应，等待用户重新开启 Portal 并通过掩码输入配对码。新一轮采集、在线下载、应用归因和热点验证均尚未执行。
+
+## 2026-11-25T17:12:09+08:00 — 真实在线 ETL 核对 Win10M 应用 CPU 归因和原生热点
+
+- 用户完成非持久 Portal 配对后，`GeneralProfile.wprp` 完成一次 WPR。采集先于应用激活，精确包在采集前无进程、激活后两次 Portal 快照均匹配 PID 3120。应用现场显示负载完成，校验值 `3257548575`。Stop 确认 Idle，在线下载 25,165,824 字节，SHA256 `dd53a563612905d0d897cca199fb061f63391e959e3889b5a73be1aac14f5d89`，文件与 history 一致。run `7f61ce46-15d9-477e-8ae6-669f0e7761b0`，会话清理无警告，保留模拟器运行。
+- 完整事件导出 173,418 个事件、25,982 个 CPU sample。ETL 唯一 `Process/Start` 对应 PID 3120、完整包名、`ApplicationID=App`、`UniqueProcessKey=0x9BEF3040`。按进程实例归入 23,996 个样本，事件 XML 和 TraceEvent 数量一致。该进程 `Image/Load` 的原生 DLL 基址为 `0x6CAA0000`，模块大小 `0x5000`。PDB GUID `a144d33a-b7cd-4b28-8463-23160d7538f7`、age 1 与 ETL 一致。指令地址独立符号化得到 `FixtureHotMix` 23,536（98.08%）和 `FixtureBatchLoop` 1。
+- TraceEvent 按同一进程实例提取 14,167 个有栈样本，其中 13,825 个包含三个预置原生帧。有 9,829 个样本缺栈，9,828 个出现在最后一个带栈样本（相对 ETL 起点 15.755 秒）之后。头部 `EventsLost=0`、`BuffersLost=0`。未验证 CLR/JIT 或系统符号覆盖。PerfView 4.0.0 自带 `cpuStacks` ZIP 可读且包含 23,996 个样本及三个符号，但 CLI 写出后抛 `NullReferenceException`、退出 1。用独立 TraceEvent 和 PDB 原始指令地址解析确认结论。
+- 证据位于 `TEMP/mcp-cpu14393-c8a2f5ad`，包括 `capture-result.json`、`cpu-analysis.json`、`process-attribution.json`、`workload-stacks.tsv`、`workload-hotspots.tsv` 和 `guest-after.png`。验证了下载哈希、原始事件、进程实例、栈 ZIP CRC 和符号计数。本次仅补充实测文档。

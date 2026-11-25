@@ -37,6 +37,14 @@ Mobile 14393 的 `WebManagement.exe` 在 `/api/wpr/tracefiles` 中检查进程�
 
 2026-11-25（UTC+08:00）实测使用 `GeneralProfile.wprp` 采集，Stop 返回零字节并确认 Idle。采集前无枚举，Stop 后工具按设备时间和 FILETIME 选出唯一候选，并经 HTTPS 下载 11 MiB ETL。公开 MCP 回归核对了下载大小、SHA256、history 一致性和会话清理。PerfView 解析出 44,700 个事件和 848 个 CPU sample 事件，ETL 头部记录 EventsLost=0、BuffersLost=0。
 
+### Win10M 应用归因与原生热点实测
+
+在同一 14393 模拟器部署 UWP x86 测试应用 `McpCpu14393`，使用 `GeneralProfile.wprp` 在启动应用前开始采集，经 Portal HTTPS 下载 24 MiB ETL。Portal 报告的 PID 3120 和完整包名与 ETL 的唯一 `Process/Start` 一致，ETL 还提供 `ApplicationID=App` 和 `UniqueProcessKey`。按进程实例归入 23,996 个 CPU 采样，整条 ETL 共 25,982 个。
+
+将采样指令地址与该进程的 `Image/Load` 记录关联，使用 GUID 和 age 均匹配的本地 PDB 解析模块相对地址。`FixtureHotMix` 命中 23,536 个采样，占该应用采样的 98.08%。14,167 个应用采样带栈，其中 13,825 个包含 `RunFixtureBatch → FixtureBatchLoop → FixtureHotMix`。9,829 个应用采样没有栈，除一个外都出现在最后一个带栈的应用采样之后。ETL 头部的 `EventsLost=0` 和 `BuffersLost=0` 与栈覆盖率是独立指标。该次符号验证覆盖测试 DLL 的原生函数。
+
+本机 PerfView 4.0.0 的 `SaveCPUStacks` 写出可读、含三个已解析函数的 XML ZIP，随后在 `ExecuteUserCommand` 中抛出 `NullReferenceException` 并退出 1。实测用同版 TraceEvent 按精确进程实例独立提取和复核有栈样本，并用匹配 PDB 按采样指令地址复核热点计数。
+
 ## ETL 事件检查
 
 调用 `vs2015_perfview_report`，指定 `analysis:"eventsXml"`、采集返回的 `inputPath`、已安装的 `perfViewPath` 和 `dryRun:false`。返回 XML、原始分析日志及结构化 `eventSummary`，并写入 history。`eventContentValidated:true` 表示实际导出 XML 已完整解析；不会修改采集 receipt 中原有的验证结论。
