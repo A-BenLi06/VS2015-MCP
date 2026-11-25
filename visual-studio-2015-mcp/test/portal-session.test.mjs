@@ -34,6 +34,7 @@ async function fixture(t) {
       state.running = false;
       const DateCreated = state.useCreationTime ? fileTime(Date.now()) : 1234;
       state.files.push({ Name: 'guest trace.etl', Id: '1', DateCreated, FileSize: etl.length });
+      if (state.additionalStopFile) state.files.push({ ...state.files.at(-1), Name: 'second.etl' });
       if (state.listAfterStop) state.statusInsteadOfFiles = false;
       if (state.loseStop) return q.socket.destroy();
       if (state.direct) { r.setHeader('Content-Type', 'application/octet-stream'); return r.end(state.truncateDirect ? etl.subarray(0, 512) : etl); }
@@ -41,6 +42,7 @@ async function fixture(t) {
     }
     if (route === '/api/wpr/tracefile') {
       if (state.failDownload) { r.statusCode = 500; return r.end(); }
+      if (state.replaceDuringDownload) state.files[0].DateCreated++;
       r.setHeader('Content-Type', 'application/octet-stream'); return r.end(etl);
     }
     if (route === '/api/resourcemanager/processes') return json({ Processes: [{ ProcessId: 12, ImageName: 'app.exe' }] });
@@ -105,9 +107,22 @@ test('Portal rejects foreign captures, endpoint/OS drift, and ambiguous new trac
   await assert.rejects(f.session.validate({ ...f.proof, guestAddress: '127.0.0.2' }, {}), { code: 'PORTAL_TARGET_CHANGED' });
   f.state.os.ComputerName = 'Other'; await assert.rejects(f.session.validate(f.proof, {}), { code: 'PORTAL_IDENTITY_CHANGED' }); f.state.os.ComputerName = 'Phone';
   const started = await f.session.start(await f.startArgs(), {}); const args = { captureId: started.captureId, exclusiveGuest: true };
-  await f.session.stop(args, {}); f.state.files.push({ ...f.state.files[0], Name: 'second.etl' });
+  f.state.additionalStopFile = true;
+  await f.session.stop(args, {});
   await assert.rejects(f.session.download(args, {}), { code: 'PORTAL_TRACE_AMBIGUOUS' });
   assert.equal((await f.session.download({ ...args, filename: 'guest trace.etl' }, {})).selectedFile.Name, 'guest trace.etl');
+});
+test('delayed Portal download uses only frozen Stop candidates and rejects replacement', async t => {
+  const f = await fixture(t);
+  const first = await f.session.start(await f.startArgs(), {});
+  await f.session.stop({ captureId: first.captureId, exclusiveGuest: true }, {});
+  f.state.files.push({ ...f.state.files[0], Name: 'later.etl', Id: '2' });
+  await assert.rejects(f.session.download({ captureId: first.captureId, filename: 'later.etl' }, {}), { code: 'PORTAL_TRACE_AMBIGUOUS' });
+  f.state.replaceDuringDownload = true;
+  await assert.rejects(f.session.download({ captureId: first.captureId }, {}), { code: 'PORTAL_TRACE_CHANGED' });
+  await assert.rejects(f.session.download({ captureId: first.captureId }, {}), { code: 'PORTAL_TRACE_CHANGED' });
+  assert.equal(f.state.calls.filter(([, url]) => url.startsWith('/api/wpr/tracefile?')).length, 1);
+  assert.equal(JSON.parse(await readFile(first.receiptPath, 'utf8')).trace, null);
 });
 test('Portal supports direct ETL stop responses without downloading again', async t => {
   const f = await fixture(t); f.state.direct = true;

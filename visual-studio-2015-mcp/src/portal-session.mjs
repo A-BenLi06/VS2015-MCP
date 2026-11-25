@@ -1,4 +1,4 @@
-import { mkdir, writeFile, rename, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, rename, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import net from 'node:net';
 import { randomUUID } from 'node:crypto';
@@ -162,12 +162,12 @@ export class PortalSession {
         { operationMayContinue: true, details: { capture: captureView(record), causeCode: error.code, causeDetails: error.details } });
     }
     if (!record.trace) {
-      try { await this.refreshFiles(record, context); }
+      try { await this.snapshotCandidates(record, context); }
       catch (error) { record.artifactError ??= { code: error.code, message: error.message }; await this.save(record, 'stopped'); }
     }
     return captureView(record);
   }
-  async refreshFiles(record, context) {
+  async snapshotCandidates(record, context) {
     const before = record.beforeFileListing;
     const baselineStatus = before.reason === 'status-response' ? statusOf(before.raw) : null;
     requireThat(before.available || (baselineStatus?.state === 'idle' && baselineStatus.mode === 'normal'),
@@ -190,17 +190,33 @@ export class PortalSession {
     }
     await this.save(record, record.state);
   }
+  async verifyCandidate(selected, context) {
+    const listing = await this.traceListing(context);
+    requireThat(listing.available, 'PORTAL_TRACE_LIST_UNAVAILABLE', 'The device could not revalidate the frozen trace candidate.');
+    const matches = listing.items.filter(item => item.Name.toLowerCase() === selected.Name.toLowerCase());
+    requireThat(matches.length === 1 && fileKey(matches[0]) === fileKey(selected),
+      'PORTAL_TRACE_CHANGED', 'The frozen trace candidate is missing, ambiguous, or changed on the device.');
+  }
   async download(input, context) {
     const record = this.owned(input);
     requireThat(record.state === 'stopped' || record.state === 'stopped-artifact-verified', 'PORTAL_CAPTURE_NOT_STOPPED', 'Download requires a confirmed stopped capture.');
     if (record.trace) return captureView(record);
-    await this.refreshFiles(record, context);
+    requireThat(Array.isArray(record.candidateFiles), 'PORTAL_TRACE_LIST_UNAVAILABLE', 'Stop did not establish a trace candidate snapshot.');
     const matches = input.filename ? record.candidateFiles.filter(item => item.Name === input.filename) : record.candidateFiles;
     requireThat(matches.length === 1, 'PORTAL_TRACE_AMBIGUOUS', 'Select exactly one newly observed trace filename from candidateFiles.');
     const selected = matches[0];
-    const result = await this.client.request('/api/wpr/tracefile', { ...context, query: { filename: selected.Name }, destination: path.join(record.directory, randomUUID() + '.etl') });
-    requireThat(result.bytes === selected.FileSize, 'PORTAL_TRACE_CHANGED', 'Downloaded bytes do not match the observed trace file size.');
-    record.trace = portalEtlEvidence(result); record.selectedFile = selected; delete record.artifactError;
+    await this.verifyCandidate(selected, context);
+    const destination = path.join(record.directory, randomUUID() + '.etl');
+    const result = await this.client.request('/api/wpr/tracefile', { ...context, query: { filename: selected.Name }, destination });
+    try {
+      requireThat(result.bytes === selected.FileSize, 'PORTAL_TRACE_CHANGED', 'Downloaded bytes do not match the observed trace file size.');
+      await this.verifyCandidate(selected, context);
+      record.trace = portalEtlEvidence(result);
+    } catch (error) {
+      await rm(destination, { force: true }).catch(() => {});
+      throw error;
+    }
+    record.selectedFile = selected; delete record.artifactError;
     await this.save(record, 'stopped-artifact-verified'); return captureView(record);
   }
   async execute(input, context) {

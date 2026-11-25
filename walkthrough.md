@@ -479,3 +479,5 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 完整事件导出 173,418 个事件、25,982 个 CPU sample。ETL 唯一 `Process/Start` 对应 PID 3120、完整包名、`ApplicationID=App`、`UniqueProcessKey=0x9BEF3040`。按进程实例归入 23,996 个样本，事件 XML 和 TraceEvent 数量一致。该进程 `Image/Load` 的原生 DLL 基址为 `0x6CAA0000`，模块大小 `0x5000`。PDB GUID `a144d33a-b7cd-4b28-8463-23160d7538f7`、age 1 与 ETL 一致。指令地址独立符号化得到 `FixtureHotMix` 23,536（98.08%）和 `FixtureBatchLoop` 1。
 - TraceEvent 按同一进程实例提取 14,167 个有栈样本，其中 13,825 个包含三个预置原生帧。有 9,829 个样本缺栈，9,828 个出现在最后一个带栈样本（相对 ETL 起点 15.755 秒）之后。头部 `EventsLost=0`、`BuffersLost=0`。未验证 CLR/JIT 或系统符号覆盖。PerfView 4.0.0 自带 `cpuStacks` ZIP 可读且包含 23,996 个样本及三个符号，但 CLI 写出后抛 `NullReferenceException`、退出 1。用独立 TraceEvent 和 PDB 原始指令地址解析确认结论。
 - 证据位于 `TEMP/mcp-cpu14393-c8a2f5ad`，包括 `capture-result.json`、`cpu-analysis.json`、`process-attribution.json`、`workload-stacks.tsv`、`workload-hotspots.tsv` 和 `guest-after.png`。验证了下载哈希、原始事件、进程实例、栈 ZIP CRC 和符号计数。本次仅补充实测文档。
+
+## 2026-11-25T21:08:53+08:00 — 冻结 Portal Stop 的 ETL 候选，下载前后核对文件元数据。延迟下载不接收后续采集文件，下载期间同名替换会被拒绝。11 项 Portal 生命周期测试通过。
