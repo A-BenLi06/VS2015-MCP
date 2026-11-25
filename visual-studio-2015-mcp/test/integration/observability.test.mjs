@@ -39,8 +39,9 @@ test('MCP records real action times and compares imported localized reports', as
     if (process.platform === 'win32') {
       const processes = await call('vs2015_processes', { nameContains: 'node', limit: 1000 });
       assert.ok(processes.processes.some(item => item.processId === process.pid && item.startTimeUtc));
-      const captures = await Promise.all([a, b].map(run => call('vs2015_profile_sample', { runId: run.id, processId: process.pid, durationMs: 1300, intervalMs: 250, includeClr: false })));
+      const captures = await Promise.all([a, b].map(run => call('vs2015_profile_sample', { runId: run.id, processId: process.pid, durationMs: 1000, intervalMs: 1000, includeClr: false })));
       assert.ok(captures.every(value => value.summary.complete));
+      assert.ok(captures.every(value => value.summary.cpuDataSufficient && value.summary.intervalCount >= 1 && value.summary.cpuMs !== null));
       const baseline = { runId: a.id, artifactId: captures[0].artifactId }, candidate = { runId: b.id, artifactId: captures[1].artifactId };
       const processComparison = await call('vs2015_profile_compare', { baseline, candidate });
       assert.equal(processComparison.comparable, true, JSON.stringify(processComparison));

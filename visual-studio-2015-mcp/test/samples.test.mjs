@@ -21,7 +21,9 @@ test('first memory peak, delayed CLR timestamps and corrupt samples are handled'
   assert.equal(summarizeSamples(events).peakPrivateBytes, 1000);
   assert.equal(summarizeSamples(events, { startUtc: new Date(0).toISOString(), endUtc: new Date(1500).toISOString() }).clr, null);
   delete b.cpuTotalMs;
-  const bad = summarizeSamples(events); assert.equal(bad.complete, false); assert.equal(bad.cpuMs, 0);
+  const bad = summarizeSamples(events); assert.equal(bad.complete, false); assert.equal(bad.cpuMs, null);
+  assert.equal(bad.cpuDataSufficient, false);
+  assert.equal(bad.peakPrivateBytes, 1000);
   assert.ok(bad.warnings.some(warning => warning.includes('Invalid process')));
 });
 test('partial captures, counter resets and narrow operation windows remain explicit', () => {
@@ -32,5 +34,6 @@ test('partial captures, counter resets and narrow operation windows remain expli
   assert.ok(result.warnings.some(warning => warning.includes('reset')));
   const empty = summarizeSamples(events, { startUtc: new Date(200).toISOString(), endUtc: new Date(800).toISOString() });
   assert.equal(empty.intervalCount, 0);
+  assert.equal(empty.cpuMs, null);
   assert.equal(empty.cpuOneCorePercent, null);
 });

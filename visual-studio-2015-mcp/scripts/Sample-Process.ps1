@@ -70,9 +70,10 @@ try {
             } catch { $null=$warnings.Add('CLR counters unavailable: '+$_.Exception.Message) }
         }
         $writer.WriteLine(($sample | ConvertTo-Json -Depth 6 -Compress)); $count++
+        if ($sample.elapsedMs -ge $duration) { break }
         $remaining = $duration - $timer.ElapsedMilliseconds
         if ($remaining -gt 0) { Start-Sleep -Milliseconds ([int][Math]::Min($interval, $remaining)) }
-    } while ($timer.ElapsedMilliseconds -lt $duration)
+    } while ($true)
     $footer = @{kind='end';timestampUtc=[DateTimeOffset]::UtcNow.ToString('o');elapsedMs=$timer.Elapsed.TotalMilliseconds;samples=$count;reason=$reason;complete=($reason -eq 'duration');warnings=@($warnings)}
     $writer.WriteLine(($footer | ConvertTo-Json -Depth 5 -Compress)); $writer.Dispose(); $writer=$null
     [Console]::Out.WriteLine((@{path=$outputPath;identity=$identity;startedAt=$startedAt;durationMs=$timer.Elapsed.TotalMilliseconds;samples=$count;complete=$footer.complete;reason=$reason;warnings=@($warnings)} | ConvertTo-Json -Depth 6 -Compress))

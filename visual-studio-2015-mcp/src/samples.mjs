@@ -67,9 +67,11 @@ export function summarizeSamples(events, { startUtc, endUtc, top = 10, parseWarn
   if (!valid) warnings.push('Capture metadata, sample count or data integrity could not be verified.');
   if (startUtc || endUtc) warnings.push('Only whole sampling intervals within the action are included; short actions may have no samples. This is temporal association, not causal attribution.');
   const elapsedMs = intervals.reduce((sum, item) => sum + item.elapsedMs, 0);
-  const cpuMs = intervals.reduce((sum, item) => sum + item.cpuMs, 0);
+  const cpuDataSufficient = intervals.length > 0;
+  const cpuMs = cpuDataSufficient ? intervals.reduce((sum, item) => sum + item.cpuMs, 0) : null;
+  if (!cpuDataSufficient) warnings.push('CPU data is insufficient: no valid measurement interval was observed.');
   const memorySamples = samples.filter(sample => Date.parse(sample.timestampUtc) >= start && Date.parse(sample.timestampUtc) <= end);
-  return { identity: header?.identity, captureFinished: Boolean(footer), complete: Boolean(valid && footer?.complete), requestedWindow: { startUtc, endUtc },
+  return { identity: header?.identity, captureFinished: Boolean(footer), complete: Boolean(valid && footer?.complete && cpuDataSufficient), cpuDataSufficient, requestedWindow: { startUtc, endUtc },
     sampleCount: samples.length, memorySampleCount: memorySamples.length, intervalCount: intervals.length, measuredIntervalMs: elapsedMs, cpuMs,
     logicalProcessors: Number.isInteger(header?.logicalProcessors) && header.logicalProcessors > 0 ? header.logicalProcessors : null,
     cpuOneCorePercent: elapsedMs ? cpuMs / elapsedMs * 100 : null,
