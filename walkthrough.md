@@ -481,3 +481,5 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 证据位于 `TEMP/mcp-cpu14393-c8a2f5ad`，包括 `capture-result.json`、`cpu-analysis.json`、`process-attribution.json`、`workload-stacks.tsv`、`workload-hotspots.tsv` 和 `guest-after.png`。验证了下载哈希、原始事件、进程实例、栈 ZIP CRC 和符号计数。本次仅补充实测文档。
 
 ## 2026-11-25T21:08:53+08:00 — 冻结 Portal Stop 的 ETL 候选，下载前后核对文件元数据。延迟下载不接收后续采集文件，下载期间同名替换会被拒绝。11 项 Portal 生命周期测试通过。
+
+## 2026-11-25T21:10:08+08:00 — IDE 与手机桥接按请求记录写入状态，断连时分别标记已写入和排队中的命令，已返回的结果保持有效。手机 WPR 历史沿用该状态。27 项桥接与 WPR 回归通过。

@@ -83,13 +83,13 @@ export class IdeBridgeClient {
     item.timer = setTimeout(() => {
       if (item.dispatched) this.fail(this.child, new IdeBridgeError('IDE_BRIDGE_TIMEOUT',
         'The IDE request exceeded its deadline. Only the bridge was terminated; the IDE operation may continue. All session IDs are invalid; attach again.', { operationMayContinue: true }));
-      else { item.failure(new IdeBridgeError('IDE_QUEUE_TIMEOUT', 'The request expired in the initialized bridge queue.')); this.queue = this.queue.filter(other => other !== item); this.cleanup(item); }
+      else { item.failure(new IdeBridgeError('IDE_QUEUE_TIMEOUT', 'The request expired in the initialized bridge queue.', { operationMayContinue: false })); this.queue = this.queue.filter(other => other !== item); this.cleanup(item); }
     }, item.timeoutMs);
   }
   async pump() {
     if (this.active || !this.queue.length || this.closed) return;
     try { await this.ensureStarted(); }
-    catch (error) { const items = this.queue.splice(0); for (const item of items) { this.cleanup(item); item.failure(error); } return; }
+    catch (error) { const items = this.queue.splice(0); for (const item of items) this.rejectTransport(item, error); return; }
     // Several request() calls can await the same startup promise.
     if (this.active || !this.queue.length || this.closed || !this.child || !this.ready) return;
     // Compilation/startup has its own deadline. Queue/execution budgets begin
@@ -97,12 +97,14 @@ export class IdeBridgeClient {
     for (const waiting of this.queue) this.armDeadline(waiting);
     const item = this.queue.shift();
     if (item.settled) { this.cleanup(item); void this.pump(); return; }
-    this.active = item; item.dispatched = true;
+    this.active = item;
     let bytes;
     try { bytes = Buffer.from(JSON.stringify({ ...item.input, id: item.id, operation: item.operation }) + '\n'); }
     catch (error) { this.active = null; this.cleanup(item); item.failure(error); void this.pump(); return; }
     if (bytes.length > this.maxMessageBytes) { this.active = null; this.cleanup(item); item.failure(new IdeBridgeError('IDE_REQUEST_TOO_LARGE', 'IDE request exceeds its byte limit.')); void this.pump(); return; }
-    this.child.stdin.write(bytes);
+    item.dispatched = true;
+    try { this.child.stdin.write(bytes); }
+    catch (error) { this.fail(this.child, new IdeBridgeError('IDE_BRIDGE_IO', error.message, { cause: error })); }
   }
   receive(child, chunk) {
     if (child !== this.child) return;
@@ -139,12 +141,16 @@ export class IdeBridgeClient {
       void this.pump();
     }
   }
+  rejectTransport(item, error) {
+    this.cleanup(item);
+    item.failure(new IdeBridgeError(error.code, error.message, { ...error, cause: error, operationMayContinue: item.dispatched }));
+  }
   fail(child, error) {
     if (child && child !== this.child) return;
     const owned = this.child; this.child = null; this.ready = false; this.buffer = Buffer.alloc(0);
     this.startAttempt?.readyReject?.(error);
     const items = [this.active, ...this.queue].filter(Boolean); this.active = null; this.queue = [];
-    for (const item of items) { this.cleanup(item); item.failure(error); }
+    for (const item of items) this.rejectTransport(item, error);
     // Terminate this controller only. Never taskkill /T: the IDE is not ours.
     if (owned && owned.exitCode === null) owned.kill();
   }
@@ -154,7 +160,8 @@ export class IdeBridgeClient {
     this.startAttempt?.controller.abort(new IdeBridgeError('IDE_BRIDGE_CLOSED', 'The MCP connection closed during bridge initialization.'));
     this.stopPromise = (async () => {
       const items = [this.active, ...this.queue].filter(Boolean); this.active = null; this.queue = [];
-      for (const item of items) { this.cleanup(item); item.failure(new IdeBridgeError('IDE_BRIDGE_CLOSED', 'The MCP connection closed. The IDE is left running.')); }
+      const error = new IdeBridgeError('IDE_BRIDGE_CLOSED', 'The MCP connection closed. The IDE is left running.');
+      for (const item of items) this.rejectTransport(item, error);
       if (this.starting) await this.starting.catch(() => {});
       const child = this.child; this.child = null; this.ready = false;
       if (!child || child.exitCode !== null) return;
