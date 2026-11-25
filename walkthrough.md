@@ -466,3 +466,9 @@ New-Wp81Fixture 增加显式 XamlAutomation 开关，生成 EditableValue TextBo
 - 采集前 status-only 仍保留 `beforeFiles:null`。仅当其报告 Idle/normal、Stop 后确认 Idle 且枚举可用时，用本机请求区间校验两次 HTTP Date 的时钟偏移，并筛选时间窗内具有 FILETIME 创建时间的非空 ETL。截止依据来自 Stop 后首次 Idle，后续下载重试不扩大时间窗。有采集前文件枚举时继续按差集选择。添加旧文件、超窗文件和时钟偏移回归。
 - 用户在已核对身份的专用模拟器完成非持久配对。公开 MCP 实测 `GeneralProfile.wprp` 采集前为状态对象，Stop 后枚举返回 `C:\Data\SystemData\Temp\WPRTraces\` 下的唯一新文件 `EtwTrace-2026-11-25-00-54-45.etl`，HTTPS 在线下载 11,534,336 字节。SHA256 `a1075ecc33227b6d484cf0947cc68d61bac45a2c77da313cc6286db221f57e1e` 与实际文件、history 一致。run `956e4ec9-8a21-4f7c-9351-609cf7684021`，调用记录 `TEMP/portal-runtime-qhoVLr/results.json`。会话清理无警告，模拟器保持运行。
 - 完整 SDK 单元测试 133/133 通过。对在线下载文件执行公开 MCP PerfView 回归，解析 44,700 个事件、848 个 CPU sample、125 个未解码事件，EventsLost=0、BuffersLost=0。离线分析记录在 `TEMP/v15-guest-events-JDPnid`。
+
+## 2026-11-25T12:54:22+08:00 — 准备 Win10M 应用 CPU 归因实测
+
+- 在 TEMP 独立构建 VS2015 UWP x86 测试应用 `McpCpu14393`。后台负载运行约 24 秒，原生 DLL 保留 `RunFixtureBatch → FixtureBatchLoop → FixtureHotMix` 三层调用。核对包内 DLL 和编译产物 SHA256 一致，PE 与本地 PDB 的 GUID/age 相符。
+- 在专用 Mobile 14393 模拟器通过 VS2015 IDE MCP 部署成功，确认包 `f741b159-f53e-4c1e-b0d2-72943a28af6d_1.0.0.0_x86__xk8sdgvb08t6r`，未启动应用。部署记录及匿名本地 WPR 执行入口保留在 `TEMP/mcp-cpu14393-c8a2f5ad`。分析入口已用先前 ETL 核对进程实例和原始栈读取，并用此次 DLL 的本地 PDB 验证符号读取。前次 ETL 仅为分析器校准。
+- 当前模拟器重启后 80/443 未响应，等待用户重新开启 Portal 并通过掩码输入配对码。新一轮采集、在线下载、应用归因和热点验证均尚未执行。
