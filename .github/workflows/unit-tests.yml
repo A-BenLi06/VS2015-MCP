@@ -10,6 +10,11 @@ on:
       - 'visual-studio-2015-mcp/**'
       - '.github/workflows/unit-tests.yml'
   workflow_dispatch:
+    inputs:
+      vs2015:
+        description: Run the IDE cache regression on a dedicated VS2015 Windows runner
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,3 +40,21 @@ jobs:
           cache-dependency-path: visual-studio-2015-mcp/package-lock.json
       - run: npm ci
       - run: npm test
+  ide-cache:
+    if: github.event_name == 'workflow_dispatch' && inputs.vs2015 && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: [self-hosted, Windows, vs2015]
+    timeout-minutes: 10
+    env:
+      VS2015_TEST_IDE_CACHE: '1'
+    defaults:
+      run:
+        working-directory: visual-studio-2015-mcp
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: visual-studio-2015-mcp/package-lock.json
+      - run: npm ci
+      - run: node --test test/integration/ide-cache.test.mjs

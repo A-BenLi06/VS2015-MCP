@@ -13,6 +13,7 @@ test('IDE compiler cache serializes writers, invalidates changed sources and rej
   await mkdir(scripts); await mkdir(sources);
   const script = path.join(scripts, 'Build-IdeBridge.ps1');
   await copyFile(fileURLToPath(new URL('../../scripts/Build-IdeBridge.ps1', import.meta.url)), script);
+  await copyFile(fileURLToPath(new URL('../../scripts/WindowsPaths.psm1', import.meta.url)), path.join(scripts, 'WindowsPaths.psm1'));
   const sourceRoot = fileURLToPath(new URL('../../ide-bridge/', import.meta.url));
   const names = (await readdir(sourceRoot)).filter(name => name.endsWith('.cs'));
   for (const name of names) await copyFile(path.join(sourceRoot, name), path.join(sources, name));
