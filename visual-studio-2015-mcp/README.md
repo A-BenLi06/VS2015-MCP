@@ -43,11 +43,13 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 |---|---|
 | `vs2015_instances` / `vs2015_attach` / `vs2015_detach` | 运行中 IDE 发现、指定身份连接、释放自动化会话 |
 | `vs2015_solution_status` / `vs2015_open_solution` | IDE 中真实解决方案、活动配置／平台；在空 IDE 打开解决方案 |
-| `vs2015_build_active` / `vs2015_build_status` / `vs2015_ide_events` | IDE 构建、完成事件与调试事件游标 |
-| `vs2015_documents` / `vs2015_document_open` / `vs2015_document_read` / `vs2015_document_replace` / `vs2015_document_save` | 文本缓冲、未保存编辑、冲突检查与显式保存 |
+| `vs2015_solution_configurations` / `vs2015_solution_configure` | 枚举配置／平台／项目映射，受 token 保护切换活动配置与启动项目 |
+| `vs2015_project_build` / `vs2015_project_properties` / `vs2015_project_property_set` / `vs2015_project_app_identity` | 项目级构建／部署、受保护的属性读写及 Appx 清单包身份读取 |
+| `vs2015_build_active` / `vs2015_build_status` / `vs2015_build_reconcile` / `vs2015_ide_events` | IDE 构建、完成事件、空闲丢失事件协调与调试事件游标 |
+| `vs2015_documents` / `vs2015_document_open` / `vs2015_document_read` / `vs2015_document_replace` / `vs2015_document_edit` / `vs2015_document_save` | 文本缓冲、整文冲突替换、SHA-256 增量范围编辑与显式保存 |
 | `vs2015_ide_errors_output` | 当前 Error List 与按 GUID 选择的 Output 文本 |
 | `vs2015_ide_debug_state` / `vs2015_ide_debug_breakpoints` / `vs2015_ide_debug_control` / `vs2015_ide_debug_wait` | 持续 IDE 调试、断点、单步及状态等待 |
-| `vs2015_ide_debug_inspect` / `vs2015_ide_debug_evaluate` | IDE 当前线程／栈／locals 和显式表达式求值 |
+| `vs2015_ide_debug_inspect` / `vs2015_ide_debug_select_thread` / `vs2015_ide_debug_select_frame` / `vs2015_ide_debug_evaluate` | IDE 当前线程／栈／locals、按 pauseId 切换线程／栈帧和显式表达式求值 |
 | `vs2015_ide_guest_app_identity` | 暂停客体的实际 SDK 包身份 |
 | `vs2015_ide_xaml_tree` / `vs2015_ide_xaml_action` | 有界 WinRT XAML 树、子树及快照节点操作 |
 | `vs2015_discover` | 安装来源、版本、组件、架构和 SDK 能力 |
@@ -64,7 +66,7 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 | `vs2015_profile_compare` | 比较两次采样或同类操作的 CPU、内存峰值、GC／分配速率 |
 | `vs2015_profiler_discover` / `vs2015_profiler_cli` | Performance Tools 发现、帮助和受限原生命令 |
 | `vs2015_profiler_capture` / `vs2015_profiler_report` | 有界 VSPerf CPU 采集／旧 VSP 报告导出 |
-| `vs2015_trace_extract` / `vs2015_perfview_report` | VSPX 中 ETL 提取／PerfView 离线 CPU 与 GC 报告 |
+| `vs2015_trace_extract` / `vs2015_perfview_report` | VSPX 中 ETL 提取／PerfView 离线报告（含 `cpuStacks`/`cpuCsv`/`gcStats`/`eventsXml`/`appCpu`） |
 | `vs2015_report_inspect` / `vs2015_hotspots_import` / `vs2015_hotspots_compare` | 显式字段映射、热点快照及口径一致的历史对照 |
 | `vs2015_history_create` / `vs2015_history_list` / `vs2015_history_read` / `vs2015_history_artifact` | 运行身份、操作时间线及诊断产物 |
 | `vs2015_record_action` | 执行已有 MCP 工具并记录真实调用时间 |
@@ -78,6 +80,8 @@ pwsh -NoProfile -File .\scripts\Print-McpConfig.ps1
 | `phone_session_input` / `phone_session_screenshot` | 在持久会话中复用输入句柄和截图连接，并在关闭时释放本会话持有的按键 |
 | `phone_session_ide` | 将允许的 IDE 构建、调试、清单身份和 XAML 操作路由到已绑定项目 |
 | `phone_session_wpr_status` / `phone_session_wpr_start` / `phone_session_wpr_stop` | 在 WP8.1 客体中读取原生 WPR 状态、启动 CPU.Verbose.Memory、下载已校验 ETL，并写入历史 artifact |
+| `phone_session_portal_connect` / `phone_session_portal_read` | 绑定客体 IP 的 Win10M Device Portal 连接（Basic 或 HTTPS 单次配对 / 叶证书固定）与元数据读取 |
+| `phone_session_portal_wpr_status` / `phone_session_portal_wpr_start` / `phone_session_portal_wpr_stop` / `phone_session_portal_wpr_download` | Device Portal WPR 状态与 profile 目录读取、单次启停与固定候选 ETL 的 HTTPS 下载 |
 
 详细使用方式及微软来源见 [IDE 指南](docs/ide-guide.md)、[CLI 指南](docs/cli-guide.md)、[诊断与性能指南](docs/diagnostics-performance.md)、[调试指南](docs/debug-guide.md)、[手机模拟器指南](docs/phone-guide.md)、[手机客体性能接入现状](docs/mobile-performance.md)。客户端可通过同名 MCP resources 读取，例如 `vs2015://ide-guide`。
 
