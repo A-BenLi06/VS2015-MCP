@@ -1,4 +1,10 @@
+<div align="center">
+
+<img src="assets/logo.png" alt="Visual Studio 2015 MCP Logo" width="128" height="128" />
+
 # Visual Studio 2015 MCP
+
+</div>
 
 面向 Windows 的本地 stdio MCP 服务，用于在受控会话与显式身份校验下驱动 Visual Studio 2015（Update 3 / MSBuild 14）的构建、结构化诊断、调试、进程与性能采样、历史对照、常驻 IDE 自动化，以及 Windows Phone 8.1 / Windows 10 Mobile 模拟器操控、Device Portal 与客体 ETL 离线分析。
 
